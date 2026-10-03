@@ -20,6 +20,8 @@ function resolveBuildCommit() {
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: ["@nuxt/ui"],
+  // Keep installs and builds non-interactive in terminals and CI.
+  telemetry: false,
   devtools: {
     enabled: true,
   },
