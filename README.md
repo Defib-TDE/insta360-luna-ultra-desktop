@@ -158,9 +158,10 @@ hardware results.
 - the Rust crate is marked **publish = false**.
 - upstream auto-update support is absent from the development application.
 
-Dependency auditing currently blocks critical JavaScript production advisories
-in CI. Remaining advisories are tracked separately because the available fixes
-require upstream dependency changes or a major docs-site upgrade.
+CI is configured to block critical JavaScript production advisories once GitHub
+Actions is enabled on the fork. Remaining advisories are tracked separately
+because the available fixes require upstream dependency changes or a major
+docs-site upgrade.
 See the [dependency audit baseline](docs/DEPENDENCY_AUDIT.md).
 
 ## Project layout

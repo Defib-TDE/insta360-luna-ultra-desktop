@@ -19,6 +19,7 @@ protocol, stream format, capture mode, or webcam relay behavior.
 - [x] Record residual transitive advisory warnings without suppressing them.
 - [x] Pin CI runtimes and actions and run CI on feature branches.
 - [x] Correct fork, webcam, download, updater, and distribution documentation.
+- [ ] Enable GitHub Actions on the fork and confirm the first feature-branch CI run.
 - [ ] Obtain or confirm a license and bundled-asset redistribution rights.
 
 ## Phase 1 — Windows and camera baseline

@@ -126,6 +126,11 @@ the numbers above.
   advisory gate was added to CI.
 - CI now covers feature branches, generates the production frontend, validates
   the Python bridge, audits Rust dependencies, and pins actions/toolchains.
+- The fork currently reports zero registered GitHub Actions workflows and no run
+  was created by the Phase 0 push. The connected integration receives HTTP 403
+  for the Actions-permissions endpoint. A repository owner must enable Actions
+  from the fork's Actions tab, then re-run or push CI before treating the remote
+  checks as active.
 - See [`DISTRIBUTION.md`](DISTRIBUTION.md) for the release gate and
   [`ROADMAP.md`](ROADMAP.md) for phase boundaries. The exact remaining advisory
   baseline is recorded in [`DEPENDENCY_AUDIT.md`](DEPENDENCY_AUDIT.md).
