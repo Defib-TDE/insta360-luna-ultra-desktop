@@ -1,21 +1,20 @@
 //! Live preview transport.
 //!
 //! Asks the camera to start a preview stream over the control session that
-//! already exists, then re-serves the resulting elementary stream on an
-//! ephemeral localhost port. The frontend consumes that with `fetch` and
-//! decodes via WebCodecs, which keeps video-rate traffic off the Tauri IPC
-//! bridge and avoids the `blob:` URL decoding limitation in WKWebView.
+//! already exists, then re-serves the resulting Annex-B elementary stream on
+//! localhost. The relay retains codec headers and the current GOP so a late or
+//! briefly lagged client can begin on a decodable keyframe.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, watch, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::luna::{
@@ -23,6 +22,12 @@ use crate::luna::{
 };
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
+/// A predictable port lets an external bridge reconnect after Wi-Fi recovery.
+/// If another process owns it, the relay falls back to an ephemeral port and
+/// returns that actual port to the UI.
+const PREFERRED_PORT: u16 = 49_183;
+/// Never retain an unbounded GOP if a camera stops producing keyframes.
+const MAX_BOOTSTRAP_BYTES: usize = 16 * 1024 * 1024;
 
 /// StartLiveStream, per `insta360.messages.StartLiveStream`:
 ///   2 enableVideo, 6 videoBitrate, 7 resolution, 8 enableGyro,
@@ -46,6 +51,7 @@ fn response_head() -> Vec<u8> {
         "Content-Type: application/octet-stream\r\n",
         "Cache-Control: no-store\r\n",
         "Access-Control-Allow-Origin: *\r\n",
+        "X-Luna-Stream-Format: annex-b\r\n",
         "Connection: close\r\n\r\n"
     )
     .as_bytes()
@@ -56,9 +62,168 @@ fn response_head() -> Vec<u8> {
 #[derive(Default)]
 struct Stats {
     bytes: AtomicU64,
-    frames: AtomicU64,
+    packets: AtomicU64,
     first_bytes: StdMutex<Vec<u8>>,
     started: StdMutex<Option<Instant>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Codec {
+    H264,
+    H265,
+}
+
+#[derive(Clone)]
+struct StreamPacket {
+    sequence: u64,
+    keyframe: bool,
+    data: Arc<[u8]>,
+}
+
+#[derive(Default)]
+struct Bootstrap {
+    codec: Option<Codec>,
+    parameter_sets: Vec<(u8, Vec<u8>)>,
+    gop: Vec<Arc<[u8]>>,
+    gop_bytes: usize,
+    through_sequence: u64,
+}
+
+struct BootstrapSnapshot {
+    through_sequence: u64,
+    ready: bool,
+    chunks: Vec<Arc<[u8]>>,
+}
+
+impl Bootstrap {
+    fn ingest(&mut self, sequence: u64, payload: Arc<[u8]>) -> bool {
+        self.through_sequence = sequence;
+        let units = annexb_units(&payload);
+
+        if self.codec.is_none() {
+            self.codec = units.iter().find_map(|unit| detect_codec(unit));
+        }
+
+        let mut keyframe = false;
+        if let Some(codec) = self.codec {
+            for unit in units {
+                let Some(nal_type) = nal_type(unit, codec) else {
+                    continue;
+                };
+                if is_parameter_set(codec, nal_type) {
+                    let bytes = unit.to_vec();
+                    if let Some((_, saved)) = self
+                        .parameter_sets
+                        .iter_mut()
+                        .find(|(saved_type, _)| *saved_type == nal_type)
+                    {
+                        *saved = bytes;
+                    } else {
+                        self.parameter_sets.push((nal_type, bytes));
+                    }
+                }
+                keyframe |= is_keyframe(codec, nal_type);
+            }
+        }
+
+        if keyframe {
+            self.gop.clear();
+            self.gop_bytes = 0;
+        }
+        if keyframe || !self.gop.is_empty() {
+            self.gop_bytes += payload.len();
+            self.gop.push(payload);
+            if self.gop_bytes > MAX_BOOTSTRAP_BYTES {
+                self.gop.clear();
+                self.gop_bytes = 0;
+            }
+        }
+        keyframe
+    }
+
+    fn snapshot(&self) -> BootstrapSnapshot {
+        let mut chunks: Vec<Arc<[u8]>> = self
+            .parameter_sets
+            .iter()
+            .map(|(_, bytes)| Arc::<[u8]>::from(bytes.clone()))
+            .collect();
+        chunks.extend(self.gop.iter().cloned());
+        BootstrapSnapshot {
+            through_sequence: self.through_sequence,
+            ready: !self.gop.is_empty(),
+            chunks,
+        }
+    }
+}
+
+fn start_code_len(bytes: &[u8], at: usize) -> Option<usize> {
+    if bytes.get(at..at + 4) == Some(&[0, 0, 0, 1]) {
+        Some(4)
+    } else if bytes.get(at..at + 3) == Some(&[0, 0, 1]) {
+        Some(3)
+    } else {
+        None
+    }
+}
+
+fn annexb_units(bytes: &[u8]) -> Vec<&[u8]> {
+    let mut starts = Vec::new();
+    let mut cursor = 0;
+    while cursor + 3 <= bytes.len() {
+        if let Some(prefix) = start_code_len(bytes, cursor) {
+            starts.push((cursor, prefix));
+            cursor += prefix;
+        } else {
+            cursor += 1;
+        }
+    }
+    starts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (start, prefix))| {
+            let end = starts
+                .get(index + 1)
+                .map(|(next, _)| *next)
+                .unwrap_or(bytes.len());
+            (*start + *prefix < end).then_some(&bytes[*start..end])
+        })
+        .collect()
+}
+
+fn nal_header(unit: &[u8]) -> Option<u8> {
+    let prefix = start_code_len(unit, 0)?;
+    unit.get(prefix).copied()
+}
+
+fn detect_codec(unit: &[u8]) -> Option<Codec> {
+    let header = nal_header(unit)?;
+    match (header & 0x1f, (header >> 1) & 0x3f) {
+        (7 | 8, _) => Some(Codec::H264),
+        (_, 32..=34) => Some(Codec::H265),
+        _ => None,
+    }
+}
+
+fn nal_type(unit: &[u8], codec: Codec) -> Option<u8> {
+    let header = nal_header(unit)?;
+    Some(match codec {
+        Codec::H264 => header & 0x1f,
+        Codec::H265 => (header >> 1) & 0x3f,
+    })
+}
+
+fn is_parameter_set(codec: Codec, nal_type: u8) -> bool {
+    match codec {
+        Codec::H264 => matches!(nal_type, 7 | 8),
+        Codec::H265 => matches!(nal_type, 32..=34),
+    }
+}
+
+fn is_keyframe(codec: Codec, nal_type: u8) -> bool {
+    match codec {
+        Codec::H264 => nal_type == 5,
+        Codec::H265 => (16..=21).contains(&nal_type),
+    }
 }
 
 #[derive(Default)]
@@ -68,15 +233,26 @@ pub struct LiveViewState {
 
 struct Running {
     port: u16,
+    session: Weak<Session>,
     stats: Arc<Stats>,
+    shutdown: watch::Sender<bool>,
     server: JoinHandle<()>,
-    recorder: JoinHandle<()>,
+    pump: JoinHandle<()>,
+}
+
+impl Running {
+    fn belongs_to(&self, session: &Arc<Session>) -> bool {
+        self.session
+            .upgrade()
+            .is_some_and(|running_session| Arc::ptr_eq(&running_session, session))
+    }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
+        let _ = self.shutdown.send(true);
         self.server.abort();
-        self.recorder.abort();
+        self.pump.abort();
     }
 }
 
@@ -91,37 +267,107 @@ pub struct LiveViewInfo {
 #[serde(rename_all = "camelCase")]
 pub struct LiveViewStats {
     pub bytes: u64,
-    pub frames: u64,
+    /// UCD2 media payloads received; these are not necessarily decoded frames.
+    pub packets: u64,
     pub first_bytes_hex: String,
     pub seconds: f64,
 }
 
-/// Serve the elementary stream to whichever client connects. Each connection
-/// gets its own subscription, so a page reload simply picks up the live edge.
-async fn serve(listener: TcpListener, session: Arc<Session>) {
+async fn write_bootstrap(
+    socket: &mut TcpStream,
+    snapshot: &BootstrapSnapshot,
+) -> std::io::Result<()> {
+    for chunk in &snapshot.chunks {
+        socket.write_all(chunk).await?;
+    }
+    Ok(())
+}
+
+async fn serve_client(
+    mut socket: TcpStream,
+    stream_tx: broadcast::Sender<StreamPacket>,
+    bootstrap: Arc<StdMutex<Bootstrap>>,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let mut receiver = stream_tx.subscribe();
+    let mut scratch = [0u8; 1024];
+    let request = tokio::select! {
+        _ = shutdown.changed() => return,
+        request = socket.read(&mut scratch) => request,
+    };
+    if request.is_err() || socket.write_all(&response_head()).await.is_err() {
+        return;
+    }
+
+    let mut snapshot = bootstrap.lock().unwrap().snapshot();
+    let mut through_sequence = snapshot.through_sequence;
+    let mut ready = snapshot.ready;
+    if write_bootstrap(&mut socket, &snapshot).await.is_err() {
+        return;
+    }
+
     loop {
-        let Ok((mut socket, _)) = listener.accept().await else { break };
-        let mut receiver = session.subscribe_stream();
-        tokio::spawn(async move {
-            // Read and discard the request line; we serve one thing.
-            let mut scratch = [0u8; 1024];
-            let _ = socket.read(&mut scratch).await;
-            if socket.write_all(&response_head()).await.is_err() {
-                return;
-            }
-            loop {
-                match receiver.recv().await {
-                    Ok(payload) => {
-                        if socket.write_all(&payload).await.is_err() {
-                            break;
-                        }
+        tokio::select! {
+            _ = shutdown.changed() => break,
+            received = receiver.recv() => match received {
+                Ok(packet) => {
+                    if packet.sequence <= through_sequence || (!ready && !packet.keyframe) {
+                        continue;
                     }
-                    // A slow client drops frames and keeps going
-                    Err(RecvError::Lagged(_)) => continue,
-                    Err(RecvError::Closed) => break,
+                    if packet.keyframe {
+                        ready = true;
+                    }
+                    if socket.write_all(&packet.data).await.is_err() {
+                        break;
+                    }
                 }
+                Err(RecvError::Lagged(_)) => {
+                    snapshot = bootstrap.lock().unwrap().snapshot();
+                    through_sequence = snapshot.through_sequence;
+                    ready = snapshot.ready;
+                    if write_bootstrap(&mut socket, &snapshot).await.is_err() {
+                        break;
+                    }
+                }
+                Err(RecvError::Closed) => break,
             }
-        });
+        }
+    }
+}
+
+/// Serve the elementary stream to whichever clients connect. Each connection
+/// gets a bootstrap snapshot followed by the live edge.
+async fn serve(
+    listener: TcpListener,
+    stream_tx: broadcast::Sender<StreamPacket>,
+    bootstrap: Arc<StdMutex<Bootstrap>>,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    loop {
+        let accepted = tokio::select! {
+            _ = shutdown.changed() => break,
+            accepted = listener.accept() => accepted,
+        };
+        let Ok((socket, _)) = accepted else { break };
+        tokio::spawn(serve_client(
+            socket,
+            stream_tx.clone(),
+            Arc::clone(&bootstrap),
+            shutdown.clone(),
+        ));
+    }
+}
+
+async fn bind_listener() -> Result<TcpListener, String> {
+    match TcpListener::bind(("127.0.0.1", PREFERRED_PORT)).await {
+        Ok(listener) => Ok(listener),
+        Err(preferred_error) => TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .map_err(|fallback_error| {
+                format!(
+                    "cannot open local stream port {PREFERRED_PORT} ({preferred_error}) or an ephemeral port ({fallback_error})"
+                )
+            }),
     }
 }
 
@@ -137,15 +383,18 @@ pub async fn luna_liveview_start(
 
     let mut guard = live.inner.lock().await;
     if let Some(running) = guard.as_ref() {
-        return Ok(LiveViewInfo {
-            url: format!("http://127.0.0.1:{}/stream", running.port),
-            port: running.port,
-        });
+        if running.belongs_to(&session) {
+            return Ok(LiveViewInfo {
+                url: format!("http://127.0.0.1:{}/stream", running.port),
+                port: running.port,
+            });
+        }
+        // A reconnect replaced the control session. Stop the stale relay before
+        // binding a new one, even if the UI never managed to call stop.
+        guard.take();
     }
 
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .map_err(|e| format!("cannot open the local stream port: {e}"))?;
+    let listener = bind_listener().await?;
     let port = listener
         .local_addr()
         .map_err(|e| format!("cannot read the local stream port: {e}"))?
@@ -153,37 +402,76 @@ pub async fn luna_liveview_start(
 
     let stats = Arc::new(Stats::default());
     *stats.started.lock().unwrap() = Some(Instant::now());
+    let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
+    let (stream_tx, _) = broadcast::channel::<StreamPacket>(512);
+    let (shutdown, shutdown_rx) = watch::channel(false);
 
-    // Count independently of whether a client is attached, so "the camera
-    // sent nothing" and "the browser never connected" stay distinguishable.
-    let recorder_stats = Arc::clone(&stats);
-    let mut recorder_rx = session.subscribe_stream();
-    let recorder = tokio::spawn(async move {
+    let pump_stats = Arc::clone(&stats);
+    let pump_bootstrap = Arc::clone(&bootstrap);
+    let pump_tx = stream_tx.clone();
+    let pump_shutdown = shutdown.clone();
+    let mut camera_rx = session.subscribe_stream();
+    let pump = tokio::spawn(async move {
+        let mut sequence = 0u64;
         loop {
-            match recorder_rx.recv().await {
+            match camera_rx.recv().await {
                 Ok(payload) => {
-                    recorder_stats.bytes.fetch_add(payload.len() as u64, Ordering::Relaxed);
-                    recorder_stats.frames.fetch_add(1, Ordering::Relaxed);
-                    let mut first = recorder_stats.first_bytes.lock().unwrap();
+                    sequence = sequence.wrapping_add(1);
+                    pump_stats
+                        .bytes
+                        .fetch_add(payload.len() as u64, Ordering::Relaxed);
+                    pump_stats.packets.fetch_add(1, Ordering::Relaxed);
+                    let mut first = pump_stats.first_bytes.lock().unwrap();
                     if first.is_empty() {
                         *first = payload.iter().copied().take(64).collect();
                     }
+                    drop(first);
+
+                    let data = Arc::<[u8]>::from(payload);
+                    let keyframe = pump_bootstrap
+                        .lock()
+                        .unwrap()
+                        .ingest(sequence, Arc::clone(&data));
+                    let _ = pump_tx.send(StreamPacket {
+                        sequence,
+                        keyframe,
+                        data,
+                    });
                 }
                 Err(RecvError::Lagged(_)) => continue,
                 Err(RecvError::Closed) => break,
             }
         }
+        let _ = pump_shutdown.send(true);
     });
 
-    let server = tokio::spawn(serve(listener, Arc::clone(&session)));
+    let server = tokio::spawn(serve(listener, stream_tx, bootstrap, shutdown_rx));
+    let running = Running {
+        port,
+        session: Arc::downgrade(&session),
+        stats,
+        shutdown,
+        server,
+        pump,
+    };
 
-    session
-        .send_command(CODE_START_LIVE_STREAM, &build_start_live_stream_body(), COMMAND_TIMEOUT)
+    if let Err(error) = session
+        .send_command(
+            CODE_START_LIVE_STREAM,
+            &build_start_live_stream_body(),
+            COMMAND_TIMEOUT,
+        )
         .await
-        .map_err(|e| format!("camera rejected START_LIVE_STREAM: {e}"))?;
+    {
+        drop(running);
+        return Err(format!("camera rejected START_LIVE_STREAM: {error}"));
+    }
 
-    *guard = Some(Running { port, stats, server, recorder });
-    Ok(LiveViewInfo { url: format!("http://127.0.0.1:{port}/stream"), port })
+    *guard = Some(running);
+    Ok(LiveViewInfo {
+        url: format!("http://127.0.0.1:{port}/stream"),
+        port,
+    })
 }
 
 #[tauri::command]
@@ -191,10 +479,13 @@ pub async fn luna_liveview_stop(
     luna: State<'_, LunaState>,
     live: State<'_, LiveViewState>,
 ) -> Result<(), String> {
-    // Drop the server first so the socket closes even if the camera is gone
+    // Dropping Running broadcasts shutdown to every accepted HTTP client before
+    // aborting the listener and camera pump.
     live.inner.lock().await.take();
     if let Some(session) = luna.session().await {
-        let _ = session.send_command(CODE_STOP_LIVE_STREAM, &[], COMMAND_TIMEOUT).await;
+        let _ = session
+            .send_command(CODE_STOP_LIVE_STREAM, &[], COMMAND_TIMEOUT)
+            .await;
     }
     Ok(())
 }
@@ -202,7 +493,9 @@ pub async fn luna_liveview_stop(
 #[tauri::command]
 pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveViewStats, String> {
     let guard = live.inner.lock().await;
-    let Some(running) = guard.as_ref() else { return Ok(LiveViewStats::default()) };
+    let Some(running) = guard.as_ref() else {
+        return Ok(LiveViewStats::default());
+    };
     let first = running.stats.first_bytes.lock().unwrap().clone();
     let seconds = running
         .stats
@@ -213,7 +506,7 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
         .unwrap_or_default();
     Ok(LiveViewStats {
         bytes: running.stats.bytes.load(Ordering::Relaxed),
-        frames: running.stats.frames.load(Ordering::Relaxed),
+        packets: running.stats.packets.load(Ordering::Relaxed),
         first_bytes_hex: first.iter().map(|b| format!("{b:02x}")).collect(),
         seconds,
     })
@@ -222,6 +515,10 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn h264(nal_type: u8, marker: u8) -> Arc<[u8]> {
+        Arc::from(vec![0, 0, 0, 1, 0x60 | nal_type, marker])
+    }
 
     /// The body must match the capture from published reverse-engineering
     /// work byte for byte: enableVideo, videoBitrate 40, resolution 9
@@ -240,6 +537,67 @@ mod tests {
         assert!(head.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(head.contains("Content-Type: application/octet-stream"));
         assert!(head.contains("Access-Control-Allow-Origin: *"));
+        assert!(head.contains("X-Luna-Stream-Format: annex-b"));
         assert!(head.ends_with("\r\n\r\n"));
+    }
+
+    #[test]
+    fn bootstrap_contains_headers_and_current_gop_for_late_clients() {
+        let mut bootstrap = Bootstrap::default();
+        bootstrap.ingest(1, h264(7, 0x11));
+        bootstrap.ingest(2, h264(8, 0x22));
+        bootstrap.ingest(3, h264(5, 0x33));
+        bootstrap.ingest(4, h264(1, 0x44));
+
+        let snapshot = bootstrap.snapshot();
+        assert!(snapshot.ready);
+        assert_eq!(snapshot.through_sequence, 4);
+        assert_eq!(snapshot.chunks.len(), 4);
+        assert_eq!(snapshot.chunks[0].last(), Some(&0x11));
+        assert_eq!(snapshot.chunks[1].last(), Some(&0x22));
+        assert_eq!(snapshot.chunks[2].last(), Some(&0x33));
+        assert_eq!(snapshot.chunks[3].last(), Some(&0x44));
+    }
+
+    #[test]
+    fn newer_keyframe_replaces_old_gop() {
+        let mut bootstrap = Bootstrap::default();
+        bootstrap.ingest(1, h264(7, 0x11));
+        bootstrap.ingest(2, h264(8, 0x22));
+        bootstrap.ingest(3, h264(5, 0x33));
+        bootstrap.ingest(4, h264(1, 0x44));
+        bootstrap.ingest(5, h264(5, 0x55));
+
+        let snapshot = bootstrap.snapshot();
+        assert_eq!(snapshot.through_sequence, 5);
+        assert_eq!(snapshot.chunks.len(), 3);
+        assert_eq!(snapshot.chunks[2].last(), Some(&0x55));
+    }
+
+    #[tokio::test]
+    async fn shutdown_closes_existing_http_client() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stream_tx, _) = broadcast::channel(4);
+        let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let server = tokio::spawn(serve(listener, stream_tx, bootstrap, shutdown_rx));
+
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0u8; 256];
+        let count = client.read(&mut response).await.unwrap();
+        assert!(String::from_utf8_lossy(&response[..count]).starts_with("HTTP/1.1 200 OK"));
+
+        shutdown.send(true).unwrap();
+        server.await.unwrap();
+        let closed = tokio::time::timeout(Duration::from_secs(1), client.read(&mut response))
+            .await
+            .expect("client socket stayed open after shutdown")
+            .unwrap();
+        assert_eq!(closed, 0);
     }
 }

@@ -43,6 +43,7 @@ export function useLiveView() {
 
       const info = await getCameraTransport().liveViewStart();
       note(`Camera accepted START_LIVE_STREAM. Serving on port ${info.port}.`);
+      note(`External decoder URL: ${info.url}`);
       transport.value = "annexb";
       streamUrl.value = info.url;
       active.value = true;

@@ -53,7 +53,8 @@ export interface CameraInfo {
 /** Live view counters, so a failed attempt can explain itself. */
 export interface LiveViewStats {
   bytes: number;
-  frames: number;
+  /** UCD2 media payloads received; one payload is not necessarily one frame. */
+  packets: number;
   firstBytesHex: string;
   seconds: number;
 }

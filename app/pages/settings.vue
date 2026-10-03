@@ -64,8 +64,8 @@ useHead({ title: "Settings" });
                   <span class="font-mono">192.168.42.1</span>).
                 </li>
                 <li>
-                  On macOS, allow <span class="font-medium">Luna Ultra Desktop</span> under System
-                  Settings &rsaquo; Privacy &amp; Security &rsaquo; Local Network.
+                  On macOS, allow <span class="font-medium">Luna Ultra Webcam Dev</span> under
+                  System Settings &rsaquo; Privacy &amp; Security &rsaquo; Local Network.
                 </li>
               </ul>
             </template>

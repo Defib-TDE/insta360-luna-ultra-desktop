@@ -6,7 +6,6 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_http::init())
-    .plugin(tauri_plugin_process::init())
     .manage(luna::LunaState::default())
     .manage(liveview::LiveViewState::default())
     .invoke_handler(tauri::generate_handler![
@@ -20,10 +19,6 @@ pub fn run() {
       liveview::luna_liveview_stats,
     ])
     .setup(|app| {
-      // Auto-updater (desktop only)
-      #[cfg(desktop)]
-      app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

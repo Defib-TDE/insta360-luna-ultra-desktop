@@ -1,9 +1,9 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Luna Ultra Desktop",
-  "mainBinaryName": "Luna Ultra Desktop",
+  "productName": "Luna Ultra Webcam Dev",
+  "mainBinaryName": "Luna Ultra Webcam Dev",
   "version": "0.3.2",
-  "identifier": "com.ripwords.luna-ultra-desktop",
+  "identifier": "io.github.defib-tde.luna-ultra-webcam-dev",
   "build": {
     "frontendDist": "../.output/public",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Luna Ultra 🌙",
+        "title": "Luna Ultra Webcam Dev 🌙",
         "width": 1280,
         "height": 820,
         "minWidth": 960,
@@ -29,7 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,14 +42,6 @@
     },
     "macOS": {
       "infoPlist": "Info.plist"
-    }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/Ripwords/luna-ultra-desktop/releases/latest/download/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5RjFGMkNBMjUwQjhDMjYKUldRbWpBc2x5dkx4ZVlXdU8rQm84Zkc1UThSWnlGcmY0TGJHd1V2a0ZEU3JvL0V0R2VLbzl3OFAK"
     }
   }
 }

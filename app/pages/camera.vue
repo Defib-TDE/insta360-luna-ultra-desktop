@@ -4,11 +4,34 @@ import { FEATURES } from "~/utils/features";
 
 const { isConnected } = useCamera();
 const { device, settings, loading, error, load } = useCameraSettings();
-const { active, starting, error: liveError, diagnostics, start, stop } = useLiveView();
+const {
+  active,
+  starting,
+  transport: liveTransport,
+  streamUrl,
+  error: liveError,
+  diagnostics,
+  start,
+  stop,
+} = useLiveView();
 const { recording, elapsedLabel } = useCameraCapture();
 // Scrolling over the picture is the desktop way to zoom; the dial is a readout
 // you can also drag. Both drive the same gesture state.
 const { onWheel } = useCameraZoom();
+
+const webcamUrl = computed(() => (liveTransport.value === "annexb" ? streamUrl.value : null));
+const copiedWebcamUrl = ref(false);
+
+async function copyWebcamUrl() {
+  if (!webcamUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(webcamUrl.value);
+  } catch {
+    window.prompt("Copy the local stream URL:", webcamUrl.value);
+  }
+  copiedWebcamUrl.value = true;
+  setTimeout(() => (copiedWebcamUrl.value = false), 1500);
+}
 
 useHead({ title: "Camera" });
 
@@ -100,6 +123,14 @@ const topError = computed(() => liveError.value ?? error.value ?? null);
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
+          <UButton
+            v-if="webcamUrl"
+            :label="copiedWebcamUrl ? 'Copied' : 'Copy stream URL'"
+            :icon="copiedWebcamUrl ? 'i-lucide-check' : 'i-lucide-copy'"
+            color="neutral"
+            variant="ghost"
+            @click="copyWebcamUrl"
+          />
           <UButton
             icon="i-lucide-refresh-cw"
             color="neutral"

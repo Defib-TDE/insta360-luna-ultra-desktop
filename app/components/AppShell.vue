@@ -46,7 +46,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
         <NuxtLink
           to="/"
           class="flex items-center gap-2.5 overflow-hidden"
-          aria-label="Luna Ultra home"
+          aria-label="Luna Ultra Webcam Dev home"
         >
           <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-inverted">
             <UIcon name="i-lucide-moon" class="size-4.5 text-inverted" />
@@ -55,7 +55,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
             v-if="!collapsed"
             class="truncate text-sm font-semibold tracking-tight text-highlighted"
           >
-            Luna Ultra
+            Luna Ultra Webcam Dev
           </span>
         </NuxtLink>
       </template>
@@ -66,7 +66,6 @@ const items = computed<NavigationMenuItem[][]>(() => [
 
       <template #footer="{ collapsed }">
         <div class="flex w-full flex-col gap-3" :class="collapsed ? 'items-center' : ''">
-          <UpdateBanner :collapsed />
           <CameraStatusChip :collapsed />
         </div>
       </template>

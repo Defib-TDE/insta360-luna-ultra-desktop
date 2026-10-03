@@ -10,7 +10,7 @@ const INFO: CameraInfo = {
   ssid: "Luna Ultra.OSC",
 };
 
-const STATS: LiveViewStats = { bytes: 0, frames: 0, firstBytesHex: "", seconds: 0 };
+const STATS: LiveViewStats = { bytes: 0, packets: 0, firstBytesHex: "", seconds: 0 };
 
 /**
  * A `CameraTransport` where every method is a vi.fn() with a benign default.

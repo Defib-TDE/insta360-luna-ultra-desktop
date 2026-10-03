@@ -168,6 +168,10 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust protocol + integration
 bun run build                                      # bundles → src-tauri/target/release/bundle/
 ```
 
+The `feature/webcam-bridge` development branch has a separately identified,
+non-updating build and a real-feed Windows virtual-camera bridge. See
+[`docs/WEBCAM_BRIDGE.md`](docs/WEBCAM_BRIDGE.md) for setup and validation.
+
 Every camera call goes through `CameraTransport` (`app/utils/transport.ts`).
 `lunaClient` — the real TCP/HTTP implementation — is imported by that one module
 and nowhere else, which is what lets tests and a future docs-site demo swap in a
