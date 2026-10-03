@@ -126,13 +126,13 @@ the numbers above.
   advisory gate was added to CI.
 - CI now covers feature branches, generates the production frontend, validates
   the Python bridge, audits Rust dependencies, and pins actions/toolchains.
-- The fork currently reports zero registered GitHub Actions workflows and no run
-  was created by the Phase 0 push. The connected integration receives HTTP 403
-  for the Actions-permissions and repository-settings endpoints. The unchanged
-  `master` branch is still the fork's default and contains the inherited Release
-  workflow. Before enabling Actions, a repository owner should make
-  `feature/webcam-bridge` the default branch. Then enable Actions and manually
-  run CI before treating the remote checks as active.
+- `feature/webcam-bridge` is the fork's default branch and GitHub Actions is
+  enabled. GitHub registers only the CI and Docs workflows from that branch;
+  the inherited Release workflow is absent. Hosted CI run
+  [`37158344680`](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37158344680)
+  passed on 2026-10-03 at commit `250bc54`. The RustSec action has the narrow
+  `checks: write` permission it needs to publish its audit result; all other
+  workflow access remains read-only.
 - See [`DISTRIBUTION.md`](DISTRIBUTION.md) for the release gate and
   [`ROADMAP.md`](ROADMAP.md) for phase boundaries. The exact remaining advisory
   baseline is recorded in [`DEPENDENCY_AUDIT.md`](DEPENDENCY_AUDIT.md).
