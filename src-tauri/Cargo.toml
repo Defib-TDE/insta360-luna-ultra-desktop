@@ -1,6 +1,6 @@
 [package]
 name = "luna-ultra-webcam-dev"
-version = "0.3.2-webcam-dev.1"
+version = "0.3.2-1"
 description = "Development build of the Luna Ultra desktop companion with a webcam bridge"
 authors = ["Defib-TDE", "Ripwords contributors"]
 repository = "https://github.com/Defib-TDE/insta360-luna-ultra-desktop"

@@ -1,6 +1,6 @@
 {
   "name": "luna-ultra-webcam-dev",
-  "version": "0.3.2-webcam-dev.1",
+  "version": "0.3.2-1",
   "private": true,
   "workspaces": [
     "docs/site"

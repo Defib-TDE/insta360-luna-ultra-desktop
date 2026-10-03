@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Luna Ultra Webcam Dev",
   "mainBinaryName": "Luna Ultra Webcam Dev",
-  "version": "0.3.2-webcam-dev.1",
+  "version": "0.3.2-1",
   "identifier": "io.github.defib-tde.luna-ultra-webcam-dev",
   "build": {
     "frontendDist": "../.output/public",

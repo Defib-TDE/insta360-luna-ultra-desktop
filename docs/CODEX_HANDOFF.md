@@ -59,8 +59,9 @@ Clean-base results:
   composable, and banner were removed. This build cannot install upstream
   release updates over itself.
 - Original protocol attribution is retained in source and documentation.
-- Development version: `0.3.2-webcam-dev.1`, with version/channel/commit shown
-  in Settings and a visible DEV badge in the application shell.
+- Development version: `0.3.2-1`, whose numeric prerelease is accepted by the
+  Windows MSI toolchain. The separate `webcam-dev` channel, source commit, and
+  a visible DEV badge remain shown in the application.
 
 ### Hardened elementary-stream relay
 
