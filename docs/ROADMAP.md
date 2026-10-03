@@ -19,7 +19,9 @@ protocol, stream format, capture mode, or webcam relay behavior.
 - [x] Record residual transitive advisory warnings without suppressing them.
 - [x] Pin CI runtimes and actions and run CI on feature branches.
 - [x] Correct fork, webcam, download, updater, and distribution documentation.
-- [ ] Enable GitHub Actions on the fork and confirm the first feature-branch CI run.
+- [ ] Make `feature/webcam-bridge` the fork's default branch, then enable GitHub
+      Actions and confirm the first CI run. Do not enable Actions while the unchanged
+      `master` branch is default because it still contains the inherited release workflow.
 - [ ] Obtain or confirm a license and bundled-asset redistribution rights.
 
 ## Phase 1 — Windows and camera baseline

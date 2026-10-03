@@ -158,6 +158,11 @@ hardware results.
 - the Rust crate is marked **publish = false**.
 - upstream auto-update support is absent from the development application.
 
+The fork still uses the unchanged **master** branch as its GitHub default. Before
+enabling GitHub Actions, change the default branch to **feature/webcam-bridge**;
+otherwise GitHub may register the inherited release workflow still present on
+master.
+
 CI is configured to block critical JavaScript production advisories once GitHub
 Actions is enabled on the fork. Remaining advisories are tracked separately
 because the available fixes require upstream dependency changes or a major
