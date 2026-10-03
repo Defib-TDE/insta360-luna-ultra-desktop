@@ -1,3 +1,22 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const { version: appVersion } = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
+
+function resolveBuildCommit() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 12);
+  try {
+    return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: ["@nuxt/ui"],
@@ -15,6 +34,13 @@ export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
   compatibilityDate: "2026-06-30",
   ssr: false,
+  runtimeConfig: {
+    public: {
+      appVersion,
+      buildChannel: "webcam-dev",
+      buildCommit: resolveBuildCommit(),
+    },
+  },
   vite: {
     // Better support for Tauri CLI output
     clearScreen: false,

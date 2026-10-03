@@ -77,7 +77,7 @@ const isDark = computed({
           height="28"
           class="size-7 shrink-0 rounded-[7px]"
         />
-        <span class="truncate text-[15px] font-semibold tracking-tight">Luna Ultra Desktop</span>
+        <span class="truncate text-[15px] font-semibold tracking-tight">Luna Ultra Webcam Dev</span>
       </span>
     </template>
 
@@ -104,7 +104,7 @@ const isDark = computed({
         color="neutral"
         variant="ghost"
         size="sm"
-        to="https://github.com/Ripwords/insta360-luna-ultra-desktop"
+        to="https://github.com/Defib-TDE/insta360-luna-ultra-desktop"
         target="_blank"
         aria-label="View the source on GitHub"
       />

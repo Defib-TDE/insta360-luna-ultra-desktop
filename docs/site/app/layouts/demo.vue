@@ -161,7 +161,7 @@ onMounted(() => {
         <span
           class="pointer-events-none absolute inset-x-0 text-center text-[13px] font-medium text-muted"
         >
-          Luna Ultra Desktop — simulated camera
+          Luna Ultra Webcam Dev — simulated camera
         </span>
       </div>
 

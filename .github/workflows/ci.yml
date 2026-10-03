@@ -2,19 +2,28 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, "feature/**"]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   frontend:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - name: Critical production dependency audit
+        run: bun run audit:critical
       # Each check runs independently so one failure doesn't mask the others
       # (a failing step would otherwise abort every step after it). The unit
       # tests are further split by project: `bun run test` chains the node
@@ -32,18 +41,29 @@ jobs:
       - name: Lint
         if: ${{ !cancelled() }}
         run: bun run lint
+      - name: Generate production frontend
+        if: ${{ !cancelled() }}
+        run: bun run generate
+      - name: Validate Python webcam bridge syntax
+        if: ${{ !cancelled() }}
+        run: python -m py_compile tools/webcam_bridge.py
 
   rust:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libssl-dev
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: "./src-tauri -> target"
       - name: Rust tests (protocol + mock-server integration)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Rust dependency audit
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri

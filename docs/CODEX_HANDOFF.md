@@ -1,7 +1,8 @@
 # Codex handoff: webcam bridge
 
 Updated 2026-10-03 on branch `feature/webcam-bridge` from base
-`696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`).
+`696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
+maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
 ## Goal
 
@@ -19,10 +20,10 @@ camera audio, and broader camera-control work remain later phases.
 - `upstream` fetches
   `https://github.com/Ripwords/insta360-luna-ultra-desktop.git`; its push URL is
   `DISABLED`.
-- GitHub authentication identifies as `Defib-TDE`, but GitHub rejected the fork
-  request with HTTP 403 `Resource not accessible by integration`. No `origin`
-  remote exists yet. Create the fork in GitHub with an identity allowed to fork,
-  then add it as `origin`; do not re-enable upstream pushes.
+- `origin` fetches and pushes
+  `https://github.com/Defib-TDE/insta360-luna-ultra-desktop.git`.
+- The feature branch is published as `origin/feature/webcam-bridge`.
+- Do not re-enable upstream pushes.
 
 ## Baseline established before implementation
 
@@ -58,6 +59,8 @@ Clean-base results:
   composable, and banner were removed. This build cannot install upstream
   release updates over itself.
 - Original protocol attribution is retained in source and documentation.
+- Development version: `0.3.2-webcam-dev.1`, with version/channel/commit shown
+  in Settings and a visible DEV badge in the application shell.
 
 ### Hardened elementary-stream relay
 
@@ -114,9 +117,22 @@ the numbers above.
    from the UCD2 packet counter.
 7. Camera audio remains unknown and absent from the bridge.
 
+## Phase 0 repository safeguards
+
+- Public release automation is removed from the feature branch and the local
+  release command fails closed.
+- The Rust crate is marked `publish = false`.
+- Compatible direct dependencies were refreshed and the critical JavaScript
+  advisory gate was added to CI.
+- CI now covers feature branches, generates the production frontend, validates
+  the Python bridge, audits Rust dependencies, and pins actions/toolchains.
+- See [`DISTRIBUTION.md`](DISTRIBUTION.md) for the release gate and
+  [`ROADMAP.md`](ROADMAP.md) for phase boundaries. The exact remaining advisory
+  baseline is recorded in [`DEPENDENCY_AUDIT.md`](DEPENDENCY_AUDIT.md).
+
 ## Licensing blocker
 
-No repository license file exists and `Cargo.toml` still has an empty `license`
-field. Keep attribution, but do not distribute modified source or binaries until
-the copyright holder grants or clarifies a license. The development work and
-local testing can continue without representing the fork as distributable.
+No repository license file exists and no license is declared for the Rust
+package. Keep attribution, but do not distribute modified source or binaries
+until the copyright holder grants or clarifies a license. The development work
+and local testing can continue without representing the fork as distributable.

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 useSeoMeta({
-  // No `title` here: `site.name` is already "Luna Ultra Desktop" and the
+  // No `title` here: `site.name` already carries the product name and the
   // `%s | %siteName` title template appends it, so setting an identical
-  // page title doubled up to "Luna Ultra Desktop | Luna Ultra Desktop" in
+  // page title would otherwise be doubled in
   // both <title> and og:title. Omitting it lets the template's default
   // (siteName alone, no separator) stand for the homepage.
   description:
-    "A desktop companion for the Insta360 Luna Ultra. Live viewfinder, camera control, gallery, and watermarked downloads on macOS, Windows and Linux.",
+    "An unofficial development fork for real-feed Insta360 Luna Ultra webcam and livestream workflows.",
   // A plain static asset, not `defineOgImageComponent()` — see the long
   // comment on `ogImage` in `nuxt.config.ts` for why the satori/component
   // route (`nuxt-og-image`'s intended, dynamic path) doesn't work in this
@@ -19,7 +19,7 @@ useSeoMeta({
   // documented in `components/JsonLd.vue` and left "/og.png" unresolved in
   // the generated HTML — confirmed by inspecting the output before this
   // change. Hardcoding the full URL sidesteps that broken step entirely.
-  ogImage: "https://ripwords.github.io/insta360-luna-ultra-desktop/og.png",
+  ogImage: "https://defib-tde.github.io/insta360-luna-ultra-desktop/og.png",
 });
 
 // See `components/JsonLd.vue` for why this is hand-rolled rather than
@@ -27,11 +27,11 @@ useSeoMeta({
 const softwareApp = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "Luna Ultra Desktop",
+  name: "Luna Ultra Webcam Dev",
   applicationCategory: "MultimediaApplication",
   operatingSystem: "macOS, Windows, Linux",
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-  url: "https://ripwords.github.io/insta360-luna-ultra-desktop",
+  url: "https://defib-tde.github.io/insta360-luna-ultra-desktop",
 };
 
 /**
@@ -68,15 +68,19 @@ onMounted(() => {
 
 <template>
   <UPageHero
-    title="Drive your Luna Ultra from the desktop"
-    description="Connect over Wi-Fi for a live viewfinder, full camera control, a date-grouped gallery, and batch downloads with the official watermark. macOS, Windows and Linux."
+    title="Build a real-feed Luna Ultra webcam"
+    description="An unofficial development fork targeting OBS, Teams, Zoom, and Whatnot without screen or window capture. Local testing only while licensing is unresolved."
     :links="[
       {
-        label: 'Download',
-        to: 'https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/latest',
-        icon: 'i-lucide-download',
+        label: 'Build locally',
+        to: '/docs/install',
+        icon: 'i-lucide-hammer',
       },
-      { label: 'Read the docs', to: '/docs/install', variant: 'subtle' },
+      {
+        label: 'View source',
+        to: 'https://github.com/Defib-TDE/insta360-luna-ultra-desktop',
+        variant: 'subtle',
+      },
     ]"
   />
   <UPageSection

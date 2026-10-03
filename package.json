@@ -1,6 +1,6 @@
 {
   "name": "luna-ultra-webcam-dev",
-  "version": "0.3.2",
+  "version": "0.3.2-webcam-dev.1",
   "private": true,
   "workspaces": [
     "docs/site"
@@ -21,32 +21,33 @@
     "fmt": "oxfmt",
     "typecheck": "nuxt typecheck",
     "changelog": "changelogen",
-    "release": "bun scripts/release.mjs"
+    "release": "bun scripts/release.mjs",
+    "audit:critical": "bun audit --production --audit-level=critical"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.119",
-    "@iconify-json/simple-icons": "^1.2.91",
-    "@nuxt/ui": "^4.10.0",
-    "@tauri-apps/plugin-fs": "^2.5.1",
-    "@tauri-apps/plugin-http": "^2.5.9",
-    "nuxt": "^4.5.0",
+    "@iconify-json/lucide": "^1.2.139",
+    "@iconify-json/simple-icons": "^1.2.98",
+    "@nuxt/ui": "^4.11.3",
+    "@tauri-apps/plugin-fs": "^2.6.0",
+    "@tauri-apps/plugin-http": "^2.8.0",
+    "nuxt": "^4.5.2",
     "pannellum": "^2.5.7",
     "tailwindcss": "^4.3.3",
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@nuxt/test-utils": "^4.0.3",
-    "@tauri-apps/cli": "^2.11.4",
-    "@types/three": "^0.185.1",
-    "@vue/test-utils": "^2.4.11",
+    "@nuxt/test-utils": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.1",
+    "@types/three": "^0.185.4",
+    "@vue/test-utils": "^2.5.1",
     "changelogen": "^0.6.2",
-    "happy-dom": "^20.11.1",
-    "lint-staged": "^17.2.0",
+    "happy-dom": "^20.14.5",
+    "lint-staged": "^17.6.0",
     "oxfmt": "^0.60.0",
-    "oxlint": "^1.75.0",
+    "oxlint": "^1.86.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.8"
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.12"
   },
   "lint-staged": {
     "**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue}": [

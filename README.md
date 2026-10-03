@@ -1,270 +1,191 @@
 <p align="center">
-  <img src="app-icon.png" alt="Luna Ultra Desktop" width="160" height="160" />
+  <img src="app-icon.png" alt="Luna Ultra Webcam Dev" width="160" height="160" />
 </p>
 
-<h1 align="center">Luna Ultra Desktop</h1>
+<h1 align="center">Luna Ultra Webcam Dev</h1>
 
 <p align="center">
-  A desktop companion for the <strong>Insta360 Luna Ultra</strong> camera.<br />
-  <a href="https://v2.tauri.app/">Tauri 2</a> · <a href="https://nuxt.com/">Nuxt 4</a> · <a href="https://ui.nuxt.com/">Nuxt UI</a> · <a href="https://threejs.org/">Three.js</a>
+  An unofficial development fork of the Insta360 Luna Ultra desktop companion,
+  focused on reliable real-feed webcam and livestream workflows.
+  <br />
+  <a href="https://v2.tauri.app/">Tauri 2</a> ·
+  <a href="https://nuxt.com/">Nuxt 4</a> ·
+  <a href="https://ui.nuxt.com/">Nuxt UI</a> ·
+  <a href="https://threejs.org/">Three.js</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/download/v0.3.2/Luna.Ultra.Desktop_0.3.2_aarch64.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-3F454D?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac (Apple Silicon)" /></a>
-  <a href="https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/download/v0.3.2/Luna.Ultra.Desktop_0.3.2_x64.dmg"><img src="https://img.shields.io/badge/Intel-3F454D?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Mac (Intel)" /></a>
-  <a href="https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/download/v0.3.2/Luna.Ultra.Desktop_0.3.2_x64-setup.exe"><img src="https://img.shields.io/badge/Windows-3F454D?style=for-the-badge&logo=windows11&logoColor=white" alt="Download for Windows" /></a>
-  <a href="https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/download/v0.3.2/Luna.Ultra.Desktop_0.3.2_amd64.AppImage"><img src="https://img.shields.io/badge/Linux-3F454D?style=for-the-badge&logo=linux&logoColor=white" alt="Download for Linux" /></a>
-  <br /><br />
-  <a href="https://github.com/Ripwords/insta360-luna-ultra-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/Ripwords/insta360-luna-ultra-desktop?style=flat-square&label=latest&labelColor=24292F&color=3F454D" alt="Latest release" /></a>
-</p>
+> [!IMPORTANT]
+> This fork is for local development and hardware testing. It has no public
+> downloads or auto-updater. The upstream repository does not include a license,
+> so modified source and binaries must not be distributed until the copyright
+> and bundled-asset rights are clarified. See
+> [Distribution status](docs/DISTRIBUTION.md).
 
-Connect over Wi-Fi to drive the camera from a live viewfinder, browse its media library, batch-download photos and videos with the official Luna Ultra watermark, delete files, and explore the camera as an interactive 3D model. Native desktop app for macOS, Windows, and Linux, with signed auto-updates.
+## Goal and current status
 
-Docs: https://ripwords.github.io/insta360-luna-ultra-desktop/
+The near-term goal is a dependable Windows virtual camera that consumes the
+Luna Ultra's actual encoded video feed—never screen mirroring or window capture.
+OBS, Teams, Zoom, and Whatnot are target applications. Livestream output,
+portrait framing, audio, and expanded camera controls are later phases.
+
+Development happens on **feature/webcam-bridge**. The fork's **master** branch
+remains the upstream v0.3.2 baseline. The development application has a
+separate name, bundle identifier, executable, prerelease version, and no
+updater, so it is designed to coexist with an installed upstream application.
+
+The current relay and decoder path has passed simulated external-decoder tests.
+It still needs a native Windows build and full Luna Ultra hardware validation
+before it can be called a reliable webcam.
+
+See the [development roadmap](docs/ROADMAP.md), [webcam bridge
+guide](docs/WEBCAM_BRIDGE.md), and [working handoff](docs/CODEX_HANDOFF.md).
+
+## What is implemented
+
+- **Real camera connection** over the Luna Ultra Wi-Fi network using its TCP
+  control protocol and HTTP media interface.
+- **Camera companion features** inherited from upstream: preview, capture,
+  measured camera controls, gallery, downloads, delete, watermark composition,
+  and an interactive camera model.
+- **Decoder-friendly loopback relay** for the camera's elementary H.264/H.265
+  stream, including cached codec parameter sets and keyframe-aligned late joins.
+- **External stream URL** exposed from the Camera screen when the Annex-B
+  control-session transport is active.
+- **Windows bridge prototype** using PyAV/FFmpeg decoding and pyvirtualcam, with
+  OBS and Unity Capture backends.
+- **Freshest-frame output** with reconnect backoff, letterboxing, mirroring,
+  and a decoder-only probe mode.
+- **Development identity** shown in the app together with version, channel, and
+  source commit.
+
+Known webcam limitations are intentional and tracked:
+
+- the stream currently belongs to the Camera page and stops on navigation;
+- MJPEG preview selection can bypass the Annex-B URL needed by the bridge;
+- silent health failures do not yet follow the full reconnect policy;
+- camera audio has not been established;
+- vertical Whatnot framing is not yet implemented.
+
+The detailed upstream feature and protocol map remains in
+[docs/FEATURES.md](docs/FEATURES.md). Items in that document describe upstream
+camera measurements unless specifically labelled as fork hardware evidence.
 
 <p align="center">
   <img src="screenshots/02-gallery.png" alt="Gallery" width="49%" />
   <img src="screenshots/08-camera.png" alt="Camera control" width="49%" />
 </p>
 
-## Features
-
-- **Real camera connection** — pairs with the Luna Ultra over its own Wi-Fi network using the camera's TCP control protocol and HTTP media index. No mock data.
-- **Camera control** — live viewfinder with a HUD (recording time, storage, resolution, battery), 1×–15× zoom, six capture modes, and one-tap photo/video capture.
-- **Pro bar** — exposure (ISO, shutter, EV, WB), look (colour mode, Leica and cinematic filters, strength), and format (resolution, framerate, aspect).
-- **Gallery** — date-grouped grid with photo/video filtering, three thumbnail sizes, and a full-screen preview with metadata and keyboard navigation.
-- **Multi-select** — click to toggle, shift-click for ranges, per-day select, select-all, with a floating action bar for downloads and deletes.
-- **Downloads** — background queue with per-file progress, streamed straight from the camera to your Downloads folder.
-- **Official watermark** — the genuine Insta360 Luna Ultra asset applied to photos on download, placed per the camera's real aspect-ratio layout table.
-- **Delete** — removes files from camera storage over the control channel (permanent, with confirmation).
-- **3D showpiece** — the camera rendered from its hi-fi 3D scan with orbit controls, in black or white to match the theme.
-- **Two colorways** — Arctic (light) and Midnight (dark), matching the camera's finishes.
-- **Auto-updates** — signed delta updates from GitHub Releases.
-
-## Status
-
-Everything above is verified against the camera itself. The camera has no
-published API, and its failure mode is silent: it **accepts** a write,
-**echoes** it as successful, and **reads back** a value a stale enum renders
-under the wrong name. Nothing errors. So a feature only ships here once it has
-been set from the app and confirmed on the camera's own screen.
-
-|                         |                                                                                                                                                                                                                                                                                              |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🧪 **Built, gated off** | The full settings panel — stabilisation, format, capture timers, metering, bitrate, RAW (~30 controls), plus live-view diagnostics. Written and rendering, waiting on on-device verification.                                                                                                |
-| ○ **Known gaps**        | UltraPhoto capture mode, video watermarking, white-balance read-back, macOS notarization / Windows signing.                                                                                                                                                                                  |
-| ⏸ **On hold**           | Gimbal pan/tilt, gimbal attitude/gyro, Deep Track, tap to focus — each has a **named command** in the two thirds of the protocol this project cannot yet name ([protocol gap](docs/PROTOCOL-GAP.md)); parked on getting the numbers, not on finding a lever. Colour Recovery, still nothing. |
-
-**[→ Full feature map](docs/FEATURES.md)** — the same picture area by area, with
-the measured field numbers, the per-mode availability rules, what was already
-tried on the parked features, and the six-step bar a feature has to clear to
-ship.
-
-<details>
-<summary><strong>More screenshots</strong></summary>
-
-| Connect & 3D showpiece                              | Multi-select                               |
-| --------------------------------------------------- | ------------------------------------------ |
-| ![Connect and 3D model](screenshots/01-connect.png) | ![Selection](screenshots/03-selection.png) |
-
-| Download + watermark                               | Full-screen preview                    |
-| -------------------------------------------------- | -------------------------------------- |
-| ![Download](screenshots/04-download-watermark.png) | ![Preview](screenshots/05-preview.png) |
-
-| Downloads queue                            | Light theme (Arctic)                             |
-| ------------------------------------------ | ------------------------------------------------ |
-| ![Downloads](screenshots/06-downloads.png) | ![Light theme](screenshots/07-gallery-light.png) |
-
-</details>
-
-## Installing
-
-Download the installer for your platform from the [latest release](https://github.com/Ripwords/luna-ultra-desktop/releases/latest).
-
-The app is not yet code-signed with a paid developer identity, so each OS shows
-a first-launch warning:
-
-<details>
-<summary><strong>macOS</strong> — "'Luna Ultra Desktop' is damaged and can't be opened"</summary>
-
-Signed ad-hoc but not notarized, so Gatekeeper quarantines it on download. The
-app isn't actually damaged. Drag it to **Applications**, then clear the
-quarantine attribute:
-
-```bash
-xattr -cr "/Applications/Luna Ultra Desktop.app"
-```
-
-Then open it normally (or right-click → Open the first time). If the app lives
-elsewhere, point the command at that path instead. `xattr -cr` clears all
-extended attributes recursively; to remove only the quarantine flag, use
-`xattr -dr com.apple.quarantine "/Applications/Luna Ultra Desktop.app"`.
-
-**Local-network permission.** Reaching the camera at `192.168.42.1` requires
-macOS's Local Network permission — allow it when prompted, or enable it under
-**System Settings › Privacy & Security › Local Network**.
-
-The permanent fix is Apple Developer ID signing + notarization (paid account
-required); once set up this step goes away.
-
-</details>
-
-<details>
-<summary><strong>Windows</strong> — "Windows protected your PC" (SmartScreen)</summary>
-
-Unsigned, so SmartScreen warns on first launch: click **More info → Run
-anyway**. The MSI installer also shows a standard UAC prompt. No firewall
-permission is needed — Windows allows the outbound connection to the camera
-automatically.
-
-</details>
-
-<details>
-<summary><strong>Linux</strong> — AppImage, .deb, .rpm</summary>
-
-AppImage: make it executable and run it. Some distributions need FUSE — on
-Ubuntu 22.04+ install it with `sudo apt install libfuse2`.
-
-```bash
-chmod +x "Luna Ultra Desktop_0.1.0_amd64.AppImage"
-./"Luna Ultra Desktop_0.1.0_amd64.AppImage"
-```
-
-`.deb` / `.rpm`: install with your package manager (`sudo apt install ./*.deb`
-or `sudo dnf install ./*.rpm`). No local-network permission is required.
-
-Auto-updates apply to the **AppImage** build only — `.deb` and `.rpm` installs
-must be updated manually.
-
-</details>
-
-## How it connects
-
-The Luna Ultra exposes two services on its Wi-Fi network (default gateway `192.168.42.1`):
-
-- **TCP control (port 6666)** — a UCD2-framed binary protocol used for the auth handshake, device info, and delete commands. A live control session also unlocks the HTTP media index.
-- **HTTP (port 80)** — an autoindex-style listing of the camera's storage, plus `Range`-capable file downloads.
-
-The control protocol is implemented in Rust (`src-tauri/src/luna.rs`) and exposed to the frontend as Tauri commands; the HTTP index is parsed on the frontend (`app/utils/lunaIndex.ts`). The protocol was reconstructed from the open-source [`diamondfsd/luna-ai-cut`](https://github.com/diamondfsd/luna-ai-cut) project, which also ships the mock camera server vendored here under `luna_mock_server/`.
-
 ## Development
 
-Requires [Bun](https://bun.sh/), [Rust](https://rustup.rs/), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
+Install [Bun](https://bun.sh/), [Rust](https://rustup.rs/), and the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your
+operating system. CI currently pins Bun 1.4.2 and Rust 1.99.0; the crate's
+declared minimum Rust version remains 1.77.2.
 
 ```bash
-bun install
-bun run dev      # full desktop app (Tauri + Nuxt)
-bun run ui:dev   # web frontend only — camera control unavailable
+bun install --frozen-lockfile
+bun run dev      # Tauri desktop app and Nuxt frontend
+bun run ui:dev   # browser-only UI; real camera control is unavailable
 ```
 
-Camera control requires the desktop app; a browser cannot open the raw TCP
-socket. In `ui:dev` the Connect screen says so.
+Useful checks:
 
 ```bash
-bun run test                                       # frontend unit tests (node + Nuxt runtime)
-bun run typecheck                                  # Nuxt/vue-tsc
-bun run lint                                       # oxlint
-cargo test --manifest-path src-tauri/Cargo.toml    # Rust protocol + integration tests
-bun run build                                      # bundles → src-tauri/target/release/bundle/
+bun run test
+bun run typecheck
+bun run lint
+bun run generate
+bun run audit:critical
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+python -m py_compile tools/webcam_bridge.py
 ```
 
-The `feature/webcam-bridge` development branch has a separately identified,
-non-updating build and a real-feed Windows virtual-camera bridge. See
-[`docs/WEBCAM_BRIDGE.md`](docs/WEBCAM_BRIDGE.md) for setup and validation.
+On Windows, build and bundle the isolated development application with:
 
-Every camera call goes through `CameraTransport` (`app/utils/transport.ts`).
-`lunaClient` — the real TCP/HTTP implementation — is imported by that one module
-and nowhere else, which is what lets tests and a future docs-site demo swap in a
-fake camera. An oxlint `no-restricted-imports` rule enforces this (see
-`.oxlintrc.json`): importing `lunaClient` from anywhere but `transport.ts` fails
-the build instead of silently eroding the seam.
+```powershell
+bun install --frozen-lockfile
+bun run build
+```
 
-<details>
-<summary><strong>Testing against the mock camera</strong></summary>
+Do not uninstall or overwrite the working upstream application. Before using a
+locally built installer, confirm that it identifies as **Luna Ultra Webcam Dev**
+with bundle identifier **io.github.defib-tde.luna-ultra-webcam-dev**.
 
-The vendored `luna_mock_server/` emulates the real Luna Ultra protocol. Point it
-at a folder of media, then connect the app to it:
+## Webcam bridge
+
+Keep the camera mode fixed during the initial baseline:
+
+1. Connect the desktop app to the Luna Ultra.
+2. Open **Camera** and copy the local stream URL.
+3. Probe the URL with FFmpeg or the Python bridge.
+4. Install or enable an OBS Virtual Camera or Unity Capture backend.
+5. Start the bridge and select its camera in the destination application.
+
+The exact commands, setup, and hardware test matrix are in
+[docs/WEBCAM_BRIDGE.md](docs/WEBCAM_BRIDGE.md).
+
+## How the camera connection works
+
+The Luna Ultra normally exposes:
+
+- **TCP port 6666** for a UCD2-framed control session, authentication, device
+  information, requests, notifications, and live encoded video payloads.
+- **HTTP port 80** for media access after the control session unlocks it.
+
+The Rust layer in **src-tauri/src/luna.rs** owns the TCP session.
+**src-tauri/src/liveview.rs** relays recognized encoded video payloads through a
+loopback-only HTTP endpoint. The Nuxt frontend reaches camera operations through
+the CameraTransport abstraction in **app/utils/transport.ts**.
+
+The vendored mock camera supports protocol and UI development without touching
+the real camera:
 
 ```bash
 node luna_mock_server/server.mjs \
   --root /path/to/media --host 127.0.0.1 --http-port 18080 --tcp-port 6666
 ```
 
-Launch `bun run dev` and connect to `127.0.0.1:18080` from the Connect screen.
+Mock-server tests are simulated evidence and must not be reported as Luna Ultra
+hardware results.
 
-</details>
+## Repository safety
 
-<details>
-<summary><strong>Project layout</strong></summary>
+- **upstream** fetches the original Ripwords repository and has its push URL
+  disabled.
+- **origin** is the Defib-TDE fork.
+- tag-triggered binary publication is absent from the development branch.
+- **bun run release** is deliberately blocked.
+- the Rust crate is marked **publish = false**.
+- upstream auto-update support is absent from the development application.
 
-```
-app/                     Nuxt frontend (pages, components, composables, utils)
-  composables/useCamera     Connection lifecycle, auto-reconnect
-  composables/useGallery    Selection, filtering, delete
-  composables/useDownloads  Download queue + watermark compositing
-  composables/useUpdater    Auto-update checker
-  utils/lunaClient.ts       Bridge to the Rust commands + HTTP listing
-  utils/lunaIndex.ts        Camera HTTP index parser
-  utils/transport.ts        CameraTransport interface + registry (the swappable seam)
-  utils/watermark*.ts       Official watermark placement engine
-src-tauri/src/luna.rs    Luna Ultra TCP control protocol (Rust)
-luna_mock_server/        Camera emulator for development and tests
-scripts/probe-*.mjs      On-device protocol probes (calibration, live view, file list)
-tests/                   Vitest unit tests, plus tests/nuxt/ composable tests needing a Nuxt runtime
-docs/FEATURES.md         Feature map: shipped, gated, and on hold
-docs/superpowers/specs/  Protocol findings of record
-screenshots/             Product screenshots
-```
+Dependency auditing currently blocks critical JavaScript production advisories
+in CI. Remaining advisories are tracked separately because the available fixes
+require upstream dependency changes or a major docs-site upgrade.
+See the [dependency audit baseline](docs/DEPENDENCY_AUDIT.md).
 
-</details>
+## Project layout
 
-## Releases & auto-updates
-
-Cutting a release is one command:
-
-```bash
-bun run release
+```text
+app/                         Nuxt UI, composables, and camera transport
+src-tauri/src/luna.rs        UCD2 control session and camera protocol
+src-tauri/src/liveview.rs    Loopback elementary-stream relay
+tools/webcam_bridge.py       PyAV to pyvirtualcam bridge
+tools/start-webcam.ps1       Windows virtual-environment launcher
+luna_mock_server/            Vendored camera emulator
+tests/                       Vitest and Nuxt runtime tests
+docs/WEBCAM_BRIDGE.md        Windows bridge setup and hardware matrix
+docs/ROADMAP.md              Phased development plan
+docs/DISTRIBUTION.md         Licensing and release gate
 ```
 
-[`changelogen`](https://github.com/unjs/changelogen) derives the next version
-from your [Conventional Commits](https://www.conventionalcommits.org/), updates
-`CHANGELOG.md`, syncs the version into `package.json`, `src-tauri/tauri.conf.json`
-and `Cargo.toml`, then commits, tags, and pushes. Force a bump with
-`bun run release -- --patch` / `--minor` / `--major`; preview notes without
-cutting via `bun run changelog`.
+## Attribution
 
-Pushing the tag triggers `.github/workflows/release.yml`: it opens a single
-GitHub Release, builds and signs bundles for macOS (Apple Silicon + Intel),
-Windows, and Linux with [`tauri-action`](https://github.com/tauri-apps/tauri-action),
-uploads them plus the `latest.json` manifest, and publishes once every platform
-succeeds (a failed platform leaves it a draft). The app checks for updates on
-launch and hourly, prompting in the sidebar (`app/composables/useUpdater.ts`).
+This fork is based on
+[Ripwords/insta360-luna-ultra-desktop](https://github.com/Ripwords/insta360-luna-ultra-desktop)
+at commit **696435417eac33d77c4d1fbbd1b4015df0933ca9**. Camera protocol work and
+inherited assets also cite
+[diamondfsd/luna-ai-cut](https://github.com/diamondfsd/luna-ai-cut).
 
-<details>
-<summary><strong>One-time setup</strong></summary>
-
-1. **Updater endpoint** — in `src-tauri/tauri.conf.json`, already set to this repo:
-
-   ```json
-   "endpoints": ["https://github.com/<owner>/luna-ultra-desktop/releases/latest/download/latest.json"]
-   ```
-
-2. **Signing keys** — a keypair already exists. The public key is committed in
-   `tauri.conf.json`; the private key is `src-tauri/luna-ultra-updater.key` and is
-   git-ignored. Add it as a repository secret (`TAURI_SIGNING_PRIVATE_KEY`;
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is unneeded for this passwordless key):
-
-   ```bash
-   gh secret set TAURI_SIGNING_PRIVATE_KEY < src-tauri/luna-ultra-updater.key
-   ```
-
-   Rotate with `bun x tauri signer generate -w src-tauri/luna-ultra-updater.key`,
-   then paste the new public key into `tauri.conf.json`.
-
-   > **Keep the private key safe.** If it is lost, existing installs can no longer verify updates.
-
-</details>
-
-## Credits
-
-Camera protocol and the official watermark assets are derived from [`diamondfsd/luna-ai-cut`](https://github.com/diamondfsd/luna-ai-cut). Insta360 and Luna Ultra are trademarks of their respective owners; this is an unofficial companion app.
+Insta360 and Luna Ultra are trademarks of their respective owners. This is an
+unofficial community development project and is not affiliated with or endorsed
+by Insta360.

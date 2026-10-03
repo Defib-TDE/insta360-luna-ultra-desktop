@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 // The repo was renamed to `insta360-luna-ultra-desktop` (the old
 // `luna-ultra-desktop` name now only resolves via a GitHub 301), so this is
 // the actual path segment GitHub Pages serves the project site under:
-// https://ripwords.github.io/insta360-luna-ultra-desktop/.
+// https://defib-tde.github.io/insta360-luna-ultra-desktop/.
 const baseURL = "/insta360-luna-ultra-desktop/";
 
 export default defineNuxtConfig({
@@ -310,8 +310,8 @@ export default defineNuxtConfig({
   // in sitemap.xml and the canonical link tag. Origin-only + baseURL
   // produces the correct single-prefixed URLs.
   site: {
-    url: "https://ripwords.github.io",
-    name: "Luna Ultra Desktop",
+    url: "https://defib-tde.github.io",
+    name: "Luna Ultra Webcam Dev",
     // GitHub Pages serves every generated route as `<path>/index.html`, so
     // the canonical, non-redirecting URL for e.g. `/docs/install` always
     // carries a trailing slash — a bare `/docs/install` 301s there. Without

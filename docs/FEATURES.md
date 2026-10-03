@@ -21,7 +21,10 @@ turns out to live — see [`PROTOCOL-GAP.md`](PROTOCOL-GAP.md).
 - **Measurement tooling:** `scripts/probe-colorspace.mjs`, `scripts/probe-codes.mjs`
 - **Findings of record:** [`specs/2026-07-25-camera-protocol-calibration.md`](superpowers/specs/2026-07-25-camera-protocol-calibration.md),
   [`PROTOCOL-GAP.md`](PROTOCOL-GAP.md)
-- **Test suite:** 259 unit tests across 17 files, plus Rust protocol/integration tests
+- **Fork evidence:** webcam relay/decoder tests are simulated until explicitly
+  recorded against the Defib-TDE camera; upstream on-device measurements remain
+  attributed to the firmware versions above.
+- **Test suite:** 350 frontend tests plus Rust protocol/integration tests
 
 ## Legend
 
@@ -43,22 +46,24 @@ turns out to live — see [`PROTOCOL-GAP.md`](PROTOCOL-GAP.md).
 | TCP control handshake (port 6666, UCD2 framing)     | ✅     | Rust, `src-tauri/src/luna.rs`. Auth handshake + device info.                                                                         |
 | HTTP media index (port 80)                          | ✅     | A live control session is what unlocks it.                                                                                           |
 | File listing via `GET_FILE_LIST`                    | ✅     | Replaced HTML autoindex scraping, which firmware 1.0.238 dropped.                                                                    |
-| Auto-reconnect with backoff                         | ✅     | 1s → 2s → 5s → 10s → 15s, repeating; retries immediately on OS `online`.                                                             |
-| Health detector / forced disconnect                 | ✅     | 3 consecutive failed requests plus a failed probe drops the session and leaves it dropped.                                           |
+| Auto-reconnect with backoff                         | 🚧     | Socket-disconnect events retry at 1s → 2s → 5s → 10s → 15s. A health-probe failure currently leaves the session dropped.             |
+| Health detector / forced disconnect                 | 🚧     | 3 consecutive failed requests plus a failed probe drops the session. Probe timeout and automatic recovery remain Phase 2 work.       |
 | Manual host override                                | ✅     | Persisted; accepts `host:port` for the mock server.                                                                                  |
 | Request queue with priority + concurrency cap       | ✅     | 4 slots, priority-ordered (thumbnail < listing < preview), pausable so a full-screen open is not queued behind a grid of thumbnails. |
 | Device readout (serial, firmware, storage, battery) | ✅     | Settings page + viewfinder HUD.                                                                                                      |
 
 ## Live view
 
-| Feature                              | Status | Notes                                                                              |
-| ------------------------------------ | ------ | ---------------------------------------------------------------------------------- |
-| OSC MJPEG preview                    | ✅     | Probed first; used when the camera offers it.                                      |
-| Control-session H.264 stream         | ✅     | `START_LIVE_STREAM` → Rust bridges the socket to a local HTTP port.                |
-| Annex-B → WebCodecs decode to canvas | ✅     | NAL splitting, access-unit assembly, keyframe gating in `app/utils/annexB.ts`.     |
-| Preview auto-start / auto-stop       | ✅     | Starts on connect, releases the camera's single HTTP connection before navigation. |
-| Stream diagnostics                   | 🧪     | Inside the settings slide-over, which is gated with `allSettings`.                 |
-| Preview resolution control           | ○      | Preview arrives flat at 1280×960; no lever found for it.                           |
+| Feature                              | Status | Notes                                                                                                |
+| ------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------- |
+| OSC MJPEG preview                    | ✅     | Probed first; used when the camera offers it.                                                        |
+| Control-session H.264 stream         | ✅     | `START_LIVE_STREAM` → Rust bridges the socket to a local HTTP port.                                  |
+| Annex-B → WebCodecs decode to canvas | ✅     | NAL splitting, access-unit assembly, keyframe gating in `app/utils/annexB.ts`.                       |
+| Preview auto-start / auto-stop       | 🚧     | Starts on connect but currently stops on navigation because ownership belongs to the Camera page.    |
+| External elementary-stream URL       | 🚧     | Available for Annex-B control-session preview; not exposed when OSC MJPEG wins transport selection.  |
+| Windows virtual-camera bridge        | 🧪     | PyAV/pyvirtualcam prototype; simulated decode proven, Windows and camera hardware tests outstanding. |
+| Stream diagnostics                   | 🧪     | Inside the settings slide-over, which is gated with `allSettings`.                                   |
+| Preview resolution control           | ○      | Preview arrives flat at 1280×960; no lever found for it.                                             |
 
 ## Capture
 
@@ -163,25 +168,26 @@ time.
 
 ## Downloads & watermark
 
-| Feature                                          | Status | Notes                                                                                            |
-| ------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
-| Background download queue with per-file progress | ✅     |                                                                                                  |
-| Streamed straight to the Downloads folder        | ✅     |                                                                                                  |
-| Retry failed transfers, clear finished           | ✅     |                                                                                                  |
-| Official Luna Ultra watermark on photos          | ✅     | The genuine Insta360 asset, placed per the camera's real aspect-ratio layout table.              |
-| Watermark settings + reset                       | ✅     | Settings page.                                                                                   |
-| Watermark on video                               | ○      | Videos transfer untouched — this needs a re-encode, which is a different piece of work entirely. |
+| Feature                                          | Status | Notes                                                                                                    |
+| ------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------- |
+| Background download queue with per-file progress | ✅     |                                                                                                          |
+| Transfer to the Downloads folder                 | 🚧     | Currently buffers the response and copies it again before writing; large-file Rust streaming is planned. |
+| Retry failed transfers, clear finished           | ✅     |                                                                                                          |
+| Official Luna Ultra watermark on photos          | ✅     | The genuine Insta360 asset, placed per the camera's real aspect-ratio layout table.                      |
+| Watermark settings + reset                       | ✅     | Settings page.                                                                                           |
+| Watermark on video                               | ○      | Videos transfer untouched — this needs a re-encode, which is a different piece of work entirely.         |
 
 ## App shell
 
-| Feature                                     | Status | Notes                                                                          |
-| ------------------------------------------- | ------ | ------------------------------------------------------------------------------ |
-| Arctic (light) / Midnight (dark) colourways | ✅     | Matching the camera's finishes.                                                |
-| 3D camera model with orbit controls         | ✅     | From the hi-fi scan, black or white to match the theme.                        |
-| Signed auto-updates                         | ✅     | Checked on launch and hourly; delta updates from GitHub Releases.              |
-| macOS notarization                          | ○      | Signed ad-hoc only — needs a paid Apple Developer ID. Until then, `xattr -cr`. |
-| Windows code signing                        | ○      | SmartScreen warns on first launch.                                             |
-| Mock camera server for dev/tests            | ✅     | Vendored under `luna_mock_server/`.                                            |
+| Feature                                     | Status | Notes                                                                                    |
+| ------------------------------------------- | ------ | ---------------------------------------------------------------------------------------- |
+| Arctic (light) / Midnight (dark) colourways | ✅     | Matching the camera's finishes.                                                          |
+| 3D camera model with orbit controls         | ✅     | From the hi-fi scan, black or white to match the theme.                                  |
+| Signed auto-updates                         | 🚧     | Intentionally removed from this development fork; public releases are blocked.           |
+| Development build identity                  | ✅     | Separate app/bundle identity, visible DEV badge, prerelease version, and commit readout. |
+| macOS notarization                          | ○      | Signed ad-hoc only — needs a paid Apple Developer ID. Until then, `xattr -cr`.           |
+| Windows code signing                        | ○      | SmartScreen warns on first launch.                                                       |
+| Mock camera server for dev/tests            | ✅     | Vendored under `luna_mock_server/`.                                                      |
 
 ---
 

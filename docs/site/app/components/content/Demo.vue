@@ -47,7 +47,7 @@ const src = computed(() => {
       <span
         class="pointer-events-none absolute inset-x-0 text-center text-[13px] font-medium text-muted"
       >
-        Luna Ultra Desktop — simulated camera
+        Luna Ultra Webcam Dev — simulated camera
       </span>
     </div>
 
@@ -57,7 +57,7 @@ const src = computed(() => {
         :style="{ height: `${height}px` }"
         class="block w-full border-0 bg-default"
         loading="lazy"
-        title="Luna Ultra Desktop demo"
+        title="Luna Ultra Webcam Dev demo"
       />
       <template #fallback>
         <div class="flex items-center justify-center" :style="{ height: `${height}px` }">

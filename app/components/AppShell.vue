@@ -51,11 +51,11 @@ const items = computed<NavigationMenuItem[][]>(() => [
           <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-inverted">
             <UIcon name="i-lucide-moon" class="size-4.5 text-inverted" />
           </span>
-          <span
-            v-if="!collapsed"
-            class="truncate text-sm font-semibold tracking-tight text-highlighted"
-          >
-            Luna Ultra Webcam Dev
+          <span v-if="!collapsed" class="flex min-w-0 items-center gap-2">
+            <span class="truncate text-sm font-semibold tracking-tight text-highlighted">
+              Luna Ultra Webcam
+            </span>
+            <UBadge label="DEV" color="warning" variant="subtle" size="xs" />
           </span>
         </NuxtLink>
       </template>

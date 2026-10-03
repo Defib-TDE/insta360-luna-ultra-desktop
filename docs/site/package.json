@@ -11,9 +11,9 @@
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
-    "@nuxt/content": "^3.9.0",
-    "@nuxt/kit": "^4.5.0",
-    "@nuxtjs/seo": "^3.2.2",
-    "nuxt": "^4.5.0"
+    "@nuxt/content": "^3.16.1",
+    "@nuxt/kit": "^4.5.2",
+    "@nuxtjs/seo": "^3.4.0",
+    "nuxt": "^4.5.2"
   }
 }

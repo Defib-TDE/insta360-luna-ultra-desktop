@@ -2,6 +2,7 @@
 const { info, library, host, error, isConnected, isBusy, available, connect, disconnect } =
   useCamera();
 const { reset: resetWatermark } = useWatermarkSettings();
+const { appVersion, buildChannel, buildCommit } = useRuntimeConfig().public;
 
 useHead({ title: "Settings" });
 </script>
@@ -148,6 +149,30 @@ useHead({ title: "Settings" });
           <div class="max-w-xs">
             <ColorwayToggle />
           </div>
+        </section>
+
+        <section class="space-y-4">
+          <div class="space-y-1">
+            <h2 class="text-sm font-semibold text-highlighted">Development build</h2>
+            <p class="text-sm text-muted">
+              This build is isolated from the upstream application and does not auto-update.
+            </p>
+          </div>
+
+          <dl class="grid grid-cols-2 gap-x-8 gap-y-4 border-t border-default pt-4 text-sm">
+            <div>
+              <dt class="text-muted">Version</dt>
+              <dd class="mt-0.5 font-mono text-default">{{ appVersion }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">Channel</dt>
+              <dd class="mt-0.5 font-mono text-default">{{ buildChannel }}</dd>
+            </div>
+            <div class="col-span-2">
+              <dt class="text-muted">Commit</dt>
+              <dd class="mt-0.5 font-mono text-default">{{ buildCommit }}</dd>
+            </div>
+          </dl>
         </section>
       </div>
     </template>
