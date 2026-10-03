@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  # rustsec/audit-check publishes its result as a GitHub check run.
+  checks: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
