@@ -105,6 +105,8 @@ def detected_fps(stream: Any) -> float:
 
 def probe(av: Any, args: argparse.Namespace) -> int:
     started = time.monotonic()
+    first_frame_at: float | None = None
+    last_frame_at: float | None = None
     decoded = 0
     width = 0
     height = 0
@@ -113,16 +115,31 @@ def probe(av: Any, args: argparse.Namespace) -> int:
         stream = container.streams.video[0]
         rate = detected_fps(stream)
         for frame in container.decode(video=0):
+            decoded_at = time.monotonic()
+            if first_frame_at is None:
+                first_frame_at = decoded_at
+            last_frame_at = decoded_at
             width, height = frame.width, frame.height
             decoded += 1
             if decoded >= args.probe_frames:
                 break
+    elapsed = time.monotonic() - started
+    frame_span = (
+        last_frame_at - first_frame_at
+        if first_frame_at is not None and last_frame_at is not None
+        else 0.0
+    )
+    observed_fps = (decoded - 1) / frame_span if decoded > 1 and frame_span > 0 else 0.0
     result = {
         "codec": args.codec,
         "decodedFrames": decoded,
         "fps": rate,
         "height": height,
-        "seconds": round(time.monotonic() - started, 3),
+        "observedDecodeFps": round(observed_fps, 3),
+        "seconds": round(elapsed, 3),
+        "timeToFirstFrameSeconds": (
+            round(first_frame_at - started, 3) if first_frame_at is not None else None
+        ),
         "url": args.url,
         "width": width,
     }

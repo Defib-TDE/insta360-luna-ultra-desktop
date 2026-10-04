@@ -86,7 +86,9 @@ The Camera toolbar exposes the returned URL with **Copy stream URL**.
 
 - `tools/webcam_bridge.py`: PyAV/FFmpeg decoding, freshest-frame queue,
   letterboxing, mirroring, reconnect backoff, OBS/Unity Capture output, and a
-  decoder-only probe mode.
+  decoder-only probe mode. The probe reports both FFmpeg's elementary-stream
+  rate estimate and wall-clock observed decode cadence, plus time to first
+  frame; use a long sample before claiming a source FPS maximum.
 - `tools/start-webcam.ps1`: isolated Windows venv bootstrap and launcher.
 - `tools/webcam-requirements.txt`: bounded dependency versions.
 - `docs/WEBCAM_BRIDGE.md`: setup, independent `ffprobe` check, and hardware

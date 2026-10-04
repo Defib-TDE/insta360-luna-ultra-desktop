@@ -10,6 +10,8 @@ param(
     [int]$Width = 0,
     [int]$Height = 0,
     [switch]$Mirror,
+    [ValidateRange(1, 100000)]
+    [int]$ProbeFrames = 30,
     [switch]$ProbeOnly
 )
 
@@ -41,7 +43,9 @@ if ($Fps -gt 0) { $BridgeArgs += @("--fps", "$Fps") }
 if ($Width -gt 0) { $BridgeArgs += @("--width", "$Width") }
 if ($Height -gt 0) { $BridgeArgs += @("--height", "$Height") }
 if ($Mirror) { $BridgeArgs += "--mirror" }
-if ($ProbeOnly) { $BridgeArgs += "--probe-only" }
+if ($ProbeOnly) {
+    $BridgeArgs += @("--probe-only", "--probe-frames", "$ProbeFrames")
+}
 
 & $Python @BridgeArgs
 exit $LASTEXITCODE

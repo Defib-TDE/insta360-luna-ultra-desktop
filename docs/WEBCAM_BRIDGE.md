@@ -39,6 +39,19 @@ reported 25 fps across mode switches, with observed dimensions of 1280×720,
 .\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -ProbeOnly
 ```
 
+For source-cadence measurements, use a longer sample. `fps` is FFmpeg's rate
+estimate from the elementary stream, while `observedDecodeFps` is calculated
+from the wall-clock span between decoded frames and is more useful for deciding
+whether the source genuinely supplies roughly 25, 30, or 60 decoded frames per
+second:
+
+```powershell
+.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -ProbeOnly -ProbeFrames 250
+```
+
+Run the long probe separately in each camera mode being evaluated. Do not infer
+the source maximum from the virtual camera's advertised `-Fps` value.
+
 An independent FFmpeg check is also useful:
 
 ```powershell
