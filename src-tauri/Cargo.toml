@@ -31,4 +31,4 @@ tauri = { version = "2.12.1", features = [] }
 tauri-plugin-log = "2.9.0"
 tauri-plugin-fs = "2.6.0"
 tauri-plugin-http = "2.8.0"
-tokio = { version = "1", features = ["net", "time", "sync", "io-util", "macros", "rt"] }
+tokio = { version = "1", features = ["net", "time", "sync", "io-util", "macros", "rt", "process"] }

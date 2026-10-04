@@ -33,6 +33,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=0, help="Optional output width")
     parser.add_argument("--height", type=int, default=0, help="Optional output height")
     parser.add_argument("--mirror", action="store_true", help="Mirror output horizontally")
+    parser.add_argument("--json-events", action="store_true", help="Emit structured status for the desktop app")
+    parser.add_argument("--check-runtime", action="store_true", help="Check bundled video dependencies without opening a camera")
     parser.add_argument(
         "--backend",
         choices=("auto", "obs", "unitycapture"),
@@ -153,6 +155,12 @@ class DecodedFrame:
     width: int
     height: int
     fps: float
+    received_at: float
+
+
+def emit_event(args: argparse.Namespace, event: str, **data: Any) -> None:
+    if args.json_events:
+        print(json.dumps({"event": event, **data}), flush=True)
 
 
 def replace_latest(target: queue.Queue[DecodedFrame], frame: DecodedFrame) -> None:
@@ -202,6 +210,8 @@ def decode_latest(
                 stream = container.streams.video[0]
                 rate = args.fps or detected_fps(stream)
                 received = False
+                sample_started = time.monotonic()
+                sample_frames = 0
                 for frame in container.decode(video=0):
                     if stop.is_set():
                         return
@@ -211,9 +221,18 @@ def decode_latest(
                     if not target_width:
                         target_width, target_height = frame.width, frame.height
                     pixels = frame_pixels(frame, target_width, target_height, args.mirror, numpy)
+                    now = time.monotonic()
+                    sample_frames += 1
+                    sample_seconds = now - sample_started
+                    if not received or sample_seconds >= 5:
+                        emit_event(args, "source", width=frame.width, height=frame.height,
+                                   observedDecodeFps=round(sample_frames / sample_seconds, 2)
+                                   if sample_seconds >= 5 else None)
+                        sample_started = now
+                        sample_frames = 0
                     replace_latest(
                         output,
-                        DecodedFrame(pixels, target_width, target_height, rate),
+                        DecodedFrame(pixels, target_width, target_height, rate, now),
                     )
                     received = True
                     delay = 0.5
@@ -225,6 +244,8 @@ def decode_latest(
                 return
             print(f"Stream unavailable ({error}); retrying in {delay:.1f}s...", file=sys.stderr)
             recovering = True
+        if not stop.is_set():
+            emit_event(args, "reconnecting")
         stop.wait(delay)
         delay = min(delay * 2, 5.0)
 
@@ -269,14 +290,22 @@ def run_virtual_camera(av: Any, args: argparse.Namespace) -> int:
                 f"{camera.device} ({getattr(camera, 'backend', args.backend)}).",
                 file=sys.stderr,
             )
+            emit_event(args, "publishing", device=camera.device, fps=camera.fps)
             current = first
+            stalled = False
+            slate = numpy.zeros_like(current.pixels)
+            slate[:, :, :] = (17, 17, 24)
             while True:
                 try:
                     while True:
                         current = latest.get_nowait()
                 except queue.Empty:
                     pass
-                camera.send(current.pixels)
+                stale = time.monotonic() - current.received_at > 2
+                if stale != stalled:
+                    emit_event(args, "stalled" if stale else "resumed")
+                    stalled = stale
+                camera.send(slate if stale else current.pixels)
                 camera.sleep_until_next_frame()
     except KeyboardInterrupt:
         print("Stopping webcam bridge.", file=sys.stderr)
@@ -289,6 +318,11 @@ def run_virtual_camera(av: Any, args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     av = load_decoder()
+    if args.check_runtime:
+        import numpy
+        import pyvirtualcam
+        print(json.dumps({"runtimeReady": True, "av": av.__version__, "numpy": numpy.__version__, "pyvirtualcam": pyvirtualcam.__version__}))
+        return 0
     if args.probe_only:
         return probe(av, args)
     return run_virtual_camera(av, args)

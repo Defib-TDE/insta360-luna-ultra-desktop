@@ -8,9 +8,9 @@ import {
   HISTOGRAM_SAMPLE_WIDTH,
 } from "~/utils/histogram";
 
-// The page owns starting and stopping the stream; this component is just the
+// The shell owns starting and stopping the stream; this component is just the
 // decoding surface for whatever the live-view composable is currently serving.
-const { active, transport, streamUrl, error, note, stop } = useLiveView();
+const { active, transport, streamUrl, error, note } = useLiveView();
 
 // A VideoFrame is only readable between decode and close, so the histogram is
 // sampled here and pushed out, rather than the composable reaching in for it.
@@ -192,24 +192,27 @@ function resetDecoderState() {
   seenKeyframe = false;
 }
 
-watch([active, transport, streamUrl], async ([on, kind, url]) => {
-  if (!on || kind !== "annexb" || !url) {
+watch(
+  [active, transport, streamUrl],
+  async ([on, kind, url]) => {
+    if (!on || kind !== "annexb" || !url) {
+      reset();
+      return;
+    }
     reset();
-    return;
-  }
-  reset();
-  try {
-    await consumeAnnexB(url);
-  } catch (cause) {
-    if ((cause as Error)?.name === "AbortError") return;
-    error.value = cause instanceof Error ? cause.message : String(cause);
-    note(`Stream read failed: ${error.value}`);
-  }
-});
+    try {
+      await consumeAnnexB(url);
+    } catch (cause) {
+      if ((cause as Error)?.name === "AbortError") return;
+      error.value = cause instanceof Error ? cause.message : String(cause);
+      note(`Stream read failed: ${error.value}`);
+    }
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
   reset();
-  void stop();
 });
 </script>
 

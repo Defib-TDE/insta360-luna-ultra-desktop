@@ -25,17 +25,23 @@
 
 The near-term goal is a dependable Windows virtual camera that consumes the
 Luna Ultra's actual encoded video feed—never screen mirroring or window capture.
-OBS, Teams, Zoom, and Whatnot are target applications. Livestream output,
-portrait framing, audio, and expanded camera controls are later phases.
+OBS, Teams, Zoom, and Whatnot are target applications. Studio now integrates
+webcam start/stop, landscape/portrait presets, mirroring, setup checks and guided
+OBS broadcasting. Direct in-app streaming, audio and expanded controls remain
+later phases. Easy installation is a priority: Windows builds bundle the video
+engine, with OBS's camera driver as the remaining external prerequisite.
 
 Development happens on **feature/webcam-bridge**. The fork's **master** branch
 remains the upstream v0.3.2 baseline. The development application has a
 separate name, bundle identifier, executable, prerelease version, and no
 updater, so it is designed to coexist with an installed upstream application.
 
-The current relay and decoder path has passed simulated external-decoder tests.
-It still needs a native Windows build and full Luna Ultra hardware validation
-before it can be called a reliable webcam.
+The external HEVC bridge has been tested on Windows with the user's Luna Ultra,
+Chrome and Discord, including stop/restart and Wi-Fi recovery. The new integrated
+Studio/supervisor still needs its own Windows hardware acceptance pass and
+clean-machine installer test. No public installer is being distributed.
+
+Read the [Studio plan](docs/STUDIO_PLAN.md) and [setup guide](docs/STUDIO_SETUP.md).
 
 See the [development roadmap](docs/ROADMAP.md), [webcam bridge
 guide](docs/WEBCAM_BRIDGE.md), and [working handoff](docs/CODEX_HANDOFF.md).

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { info, error, isConnected, isBusy, available, connect, disconnect } = useCamera();
+const { colorway } = useCameraAppearance();
 
 useHead({ title: "Connect" });
 
@@ -31,7 +32,15 @@ watch(isConnected, (connected) => {
             </div>
 
             <div class="flex max-w-md items-center gap-3">
-              <UButton size="xl" icon="i-lucide-images" label="Open gallery" to="/gallery" />
+              <UButton size="xl" icon="i-lucide-radio" label="Open Studio" to="/studio" />
+              <UButton
+                size="xl"
+                icon="i-lucide-images"
+                label="Gallery"
+                to="/gallery"
+                color="neutral"
+                variant="ghost"
+              />
               <UButton
                 class="ml-auto"
                 size="xl"
@@ -42,6 +51,7 @@ watch(isConnected, (connected) => {
                 @click="disconnect"
               />
             </div>
+            <CameraAppearance class="max-w-md" />
           </template>
 
           <template v-else>
@@ -51,7 +61,7 @@ watch(isConnected, (connected) => {
               </h1>
               <p class="max-w-md text-muted">
                 Join the camera's Wi-Fi network, then connect to browse, download and manage
-                everything you shot.
+                everything you shot, or open Studio to use your Luna as a webcam.
               </p>
             </div>
 
@@ -105,7 +115,7 @@ watch(isConnected, (connected) => {
         </div>
 
         <div class="order-1 h-72 min-h-0 lg:order-2 lg:h-full">
-          <LunaModel class="size-full" :celebrate />
+          <LunaModel class="size-full" :celebrate :colorway />
         </div>
       </div>
     </template>

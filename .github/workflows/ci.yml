@@ -16,6 +16,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: "./src-tauri -> target"
+      - run: bun install --frozen-lockfile
+      - name: Native Windows tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Package video engine and build Windows installers (no publication)
+        run: bun run build
+      - name: Verify embedded video engine launches
+        shell: pwsh
+        run: |
+          & 'src-tauri/target/release/resources/webcam/webcam-bridge/webcam-bridge.exe' --check-runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Embedded video engine failed to launch.' }
+          & '.venv-webcam-build/Scripts/python.exe' -m unittest discover -s tools -p 'test_webcam_bridge.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Bridge simulations failed.' }
+      # Do not upload installers until the upstream licensing issue is resolved.
+
   frontend:
     runs-on: ubuntu-22.04
     steps:
@@ -48,7 +73,9 @@ jobs:
         run: bun run generate
       - name: Validate Python webcam bridge syntax
         if: ${{ !cancelled() }}
-        run: python -m py_compile tools/webcam_bridge.py
+        run: |
+          python -m py_compile tools/webcam_bridge.py
+          python -m unittest discover -s tools -p 'test_webcam_bridge.py'
 
   rust:
     runs-on: ubuntu-22.04

@@ -12,7 +12,6 @@ const {
   error: liveError,
   diagnostics,
   start,
-  stop,
 } = useLiveView();
 const { recording, elapsedLabel } = useCameraCapture();
 // Scrolling over the picture is the desktop way to zoom; the dial is a readout
@@ -38,28 +37,7 @@ useHead({ title: "Camera" });
 /** The deep settings live in a slide-over, so the viewfinder never scrolls. */
 const settingsOpen = ref(false);
 
-/**
- * Opening the page should feel like picking up a camera: the preview starts on
- * its own as soon as we are connected, and stops when the connection drops.
- */
-watch(
-  isConnected,
-  (connected) => {
-    if (connected) void start();
-    else void stop();
-  },
-  { immediate: true },
-);
-
-/**
- * The preview holds the camera's single HTTP connection. Release it *before*
- * navigating away and wait for it to close — otherwise the next page (e.g. the
- * gallery, which reads media over that same connection) races the tear-down,
- * its requests fail, and the health detector force-disconnects the camera.
- */
-onBeforeRouteLeave(async () => {
-  await stop();
-});
+// The shell owns the shared relay. Camera controls never tear down a webcam.
 
 const battery = computed(() => {
   const status = device.value.battery_status as Record<string, unknown> | undefined;
@@ -188,7 +166,7 @@ const topError = computed(() => liveError.value ?? error.value ?? null);
               color="neutral"
               variant="subtle"
               label="Start preview"
-              @click="start"
+              @click="() => start()"
             />
           </div>
 

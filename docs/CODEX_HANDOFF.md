@@ -1,6 +1,6 @@
 # Codex handoff: webcam bridge
 
-Updated 2026-10-03 on branch `feature/webcam-bridge` from base
+Updated 2026-10-04 on branch `feature/webcam-bridge` from base
 `696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
 maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
@@ -8,8 +8,53 @@ maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
 Deliver a separately identified, non-updating development build that exposes a
 restart-safe, decoder-friendly real camera stream and provides the smallest
-reliable Windows virtual-camera path. Camera mode remains fixed. Livestreaming,
-camera audio, and broader camera-control work remain later phases.
+reliable Windows virtual-camera path, now integrated into an easy Studio UI.
+Camera mode remains fixed. Guided OBS streaming is included; direct in-app
+broadcasting, camera audio, and broader camera-control work remain later phases.
+See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
+
+## Current Studio increment (2026-10-04)
+
+- Added Studio, conservative landscape/portrait 720p30 presets, labelled
+  upscaled 1080p30, mirroring, source/output metrics, setup checklist, bounded
+  diagnostics and OBS/Whatnot guidance. Remote broadcast state is never inferred
+  from local output.
+- Added a native process supervisor with serialized operations, fixed
+  loopback/profile arguments, runtime isolation, driver detection, structured
+  status and explicit kill/reap on Stop/application exit. Help links are fixed
+  official URLs, not arbitrary shell commands.
+- The shell owns stream lifetime: leaving Camera/Studio only stops preview
+  when no webcam needs it. Output uses the established control-session relay;
+  reconnect passes the actual URL if the fallback port changes.
+- Windows builds bundle a one-directory PyInstaller engine and build local
+  MSI/NSIS installers. End users should not need Python. Unbundled development
+  builds retain explicit private-runtime setup. No public installer upload or
+  release has been enabled; licensing remains unresolved.
+- White/black model selection is remembered by camera serial. There is no
+  verified body-color metadata; Auto is still theme-based. Output preferences
+  persist but never start the webcam automatically on launch.
+- The Python bridge reports measured decode cadence and sends a neutral slate
+  after two seconds without a fresh frame, with recovery status events.
+- Existing external-bridge hardware results below do **not** validate the new
+  integrated UI/supervisor. A Windows rebuild and hardware acceptance pass are
+  still required. Follow STUDIO_SETUP.md and keep the installed upstream app.
+
+### Studio verification in the managed environment
+
+- 324 unit tests, 44 Nuxt-runtime tests and 18 Rust tests passed.
+- Four Python simulations passed with PyAV 16.1/numpy/pyvirtualcam imports.
+  They cover decoded-frame replacement, source cadence events, stale slates and
+  recovery. A fake virtual-camera sink is not OBS hardware validation.
+- Nuxt typecheck, lint, production generation and optimized Linux native build
+  passed. Native dependencies were installed only in the isolated container,
+  following the cloud-runtime skill; the host system was not changed.
+- Chromium simulated native commands and decoded a generated H.264 fixture.
+  Studio start/stop, Settings navigation, portrait profile and minimum-size
+  layout worked with no page errors or horizontal overflow. Screenshots used a
+  synthetic test pattern, not the user's camera.
+- Windows CI now compiles native tests, builds the video engine and local
+  installers, and checks the staged helper imports. No installer artifacts are
+  uploaded. CI is separate from a clean-machine install or hardware test.
 
 ## Repository and remotes
 

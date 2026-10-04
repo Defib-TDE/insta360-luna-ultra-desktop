@@ -1,5 +1,12 @@
 # Windows webcam bridge
 
+## Integrated Studio
+
+The latest development branch adds in-app webcam controls and a bundled video
+engine for Windows builds. Start with [Studio setup](STUDIO_SETUP.md). The
+command-line instructions below remain a diagnostic fallback and document the
+hardware-tested external-bridge baseline.
+
 This development branch exposes the camera's real Annex-B preview stream over
 loopback and converts decoded frames into a Windows virtual camera. It does not
 mirror a window or capture the screen.

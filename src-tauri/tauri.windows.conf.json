@@ -1,0 +1,5 @@
+{
+  "build": {
+    "beforeBuildCommand": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/build-windows.ps1"
+  }
+}

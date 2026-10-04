@@ -3,9 +3,17 @@ import type { NavigationMenuItem } from "@nuxt/ui";
 
 const { active } = useDownloads();
 const route = useRoute();
+useStudioSession();
+const { publishing: webcamPublishing, running: webcamRunning } = useWebcam();
 
 const items = computed<NavigationMenuItem[][]>(() => [
   [
+    {
+      label: "Studio",
+      icon: "i-lucide-radio",
+      to: "/studio",
+      badge: webcamRunning.value ? (webcamPublishing.value ? "ON" : "…") : undefined,
+    },
     {
       label: "Connect",
       icon: "i-lucide-cable",
@@ -53,7 +61,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
           </span>
           <span v-if="!collapsed" class="flex min-w-0 items-center gap-2">
             <span class="truncate text-sm font-semibold tracking-tight text-highlighted">
-              Luna Ultra Webcam
+              Luna Studio
             </span>
             <UBadge label="DEV" color="warning" variant="subtle" size="xs" />
           </span>

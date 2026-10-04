@@ -149,6 +149,10 @@ useHead({ title: "Settings" });
           <div class="max-w-xs">
             <ColorwayToggle />
           </div>
+          <div class="space-y-3 border-t border-default pt-4">
+            <p class="text-sm font-medium text-highlighted">Your camera's body</p>
+            <CameraAppearance />
+          </div>
         </section>
 
         <section class="space-y-4">

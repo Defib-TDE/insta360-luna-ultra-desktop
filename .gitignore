@@ -14,6 +14,10 @@ dist
 # Node dependencies
 node_modules
 .venv-webcam
+.venv-webcam-build
+.webcam-build
+src-tauri/resources/webcam/*.exe
+src-tauri/resources/webcam/webcam-bridge/
 __pycache__
 
 # Logs

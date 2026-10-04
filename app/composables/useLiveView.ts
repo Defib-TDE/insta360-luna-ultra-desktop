@@ -20,8 +20,10 @@ export function useLiveView() {
     diagnostics.value = [...diagnostics.value, line];
   };
 
-  async function start() {
-    if (starting.value || active.value) return;
+  async function start({ elementary = false } = {}) {
+    if (starting.value) return;
+    if (active.value && (!elementary || transport.value === "annexb")) return;
+    if (active.value) await stop();
     if (!isConnected.value) {
       error.value = "Connect to the camera first.";
       return;
@@ -31,7 +33,7 @@ export function useLiveView() {
     diagnostics.value = [];
 
     try {
-      const osc = await getCameraTransport().probeOscPreview(host.value);
+      const osc = elementary ? null : await getCameraTransport().probeOscPreview(host.value);
       if (osc) {
         note("OSC MJPEG preview available; using it.");
         transport.value = "mjpeg";
