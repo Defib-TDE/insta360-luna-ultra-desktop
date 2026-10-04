@@ -136,9 +136,11 @@ the numbers above.
 - `pyvirtualcam` 0.15 published a 720×1280, 25 fps feed through the OBS backend.
   Windows DirectShow enumerated **OBS Virtual Camera**, and FFmpeg consumed 30
   NV12 frames in 1.17 seconds. This proves real-camera virtual-device
-  publication and external consumption. The Windows Camera app did not list the
-  device in this portrait configuration, so standard landscape output and the
-  target conferencing applications still need testing.
+  publication and external consumption. Chrome then selected **OBS Virtual
+  Camera** on webcamtests.com and rendered the live Luna feed, proving browser
+  WebRTC consumption as well. The Windows Camera app did not list the device in
+  this portrait configuration, so standard landscape output and the target
+  conferencing applications still need testing.
 - Reconnect behavior, sustained operation, audio, and glass-to-glass latency
   remain unproven.
 

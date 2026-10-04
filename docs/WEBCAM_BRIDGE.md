@@ -65,9 +65,11 @@ Device source and choose **OBS Virtual Camera** only if OBS is consuming the
 driver rather than already publishing its own scene to it.
 
 The first fork hardware test successfully published 720×1280 at 25 fps through
-the OBS backend and consumed 30 NV12 frames through Windows DirectShow. The
-Windows Camera app did not list that portrait-format device even though
-DirectShow did, so use a standard 1280×720 output for the broadest compatibility:
+the OBS backend and consumed 30 NV12 frames through Windows DirectShow. Chrome
+also selected **OBS Virtual Camera** on webcamtests.com and displayed the live
+Luna feed. The Windows Camera app did not list that portrait-format device even
+though DirectShow and Chrome did, so use a standard 1280×720 output for the
+broadest compatibility:
 
 ```powershell
 .\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -Backend obs -Width 1280 -Height 720 -Fps 25
