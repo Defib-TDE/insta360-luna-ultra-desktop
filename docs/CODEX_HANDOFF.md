@@ -132,8 +132,15 @@ the numbers above.
   with completion times from 1.140 to 3.315 seconds. The user had switched
   modes between probes, but the exact mode-to-result sequence was not recorded.
 - This proves repeated external decoding of the real camera feed across the
-  tested mode switches. It does not yet prove virtual-camera publication,
-  reconnect behavior, sustained operation, audio, or glass-to-glass latency.
+  tested mode switches.
+- `pyvirtualcam` 0.15 published a 720×1280, 25 fps feed through the OBS backend.
+  Windows DirectShow enumerated **OBS Virtual Camera**, and FFmpeg consumed 30
+  NV12 frames in 1.17 seconds. This proves real-camera virtual-device
+  publication and external consumption. The Windows Camera app did not list the
+  device in this portrait configuration, so standard landscape output and the
+  target conferencing applications still need testing.
+- Reconnect behavior, sustained operation, audio, and glass-to-glass latency
+  remain unproven.
 
 ## Phase 0 repository safeguards
 
