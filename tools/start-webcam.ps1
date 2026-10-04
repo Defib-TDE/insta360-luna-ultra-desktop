@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$Url = "http://127.0.0.1:49183/stream",
+    [ValidateSet("h264", "hevc")]
+    [string]$Codec = "h264",
     [ValidateSet("auto", "obs", "unitycapture")]
     [string]$Backend = "auto",
     [string]$Device,
@@ -28,7 +30,12 @@ if (-not (Test-Path $Python)) {
 
 & $Python -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "webcam-requirements.txt")
 
-$BridgeArgs = @((Join-Path $PSScriptRoot "webcam_bridge.py"), "--url", $Url, "--backend", $Backend)
+$BridgeArgs = @(
+    (Join-Path $PSScriptRoot "webcam_bridge.py"),
+    "--url", $Url,
+    "--codec", $Codec,
+    "--backend", $Backend
+)
 if ($Device) { $BridgeArgs += @("--device", $Device) }
 if ($Fps -gt 0) { $BridgeArgs += @("--fps", "$Fps") }
 if ($Width -gt 0) { $BridgeArgs += @("--width", "$Width") }

@@ -31,7 +31,13 @@ From PowerShell at the repository root:
 Success is one JSON line containing `decodedFrames`, `width`, `height`, and the
 decoder's frame-rate estimate. Record the output rather than assuming 1080p;
 published testing found 1280×960 H.264, but the connected camera and firmware
-are authoritative.
+are authoritative. On 2026-10-03, the first fork hardware probe found
+1280×720 HEVC at a reported 25 fps in slow-motion mode. Select HEVC explicitly
+when testing that mode:
+
+```powershell
+.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -ProbeOnly
+```
 
 An independent FFmpeg check is also useful:
 
@@ -39,13 +45,14 @@ An independent FFmpeg check is also useful:
 ffprobe -hide_banner -f h264 -probesize 3M -analyzeduration 3M -show_streams http://127.0.0.1:49183/stream
 ```
 
-If the probe reports HEVC rather than H.264, rerun the Python probe with
-`--codec hevc` directly and record that result before changing the default.
+If H.264 reports invalid data, retry with `-Codec hevc` and record the camera
+mode with the result. Do not change the default globally until other modes and
+firmware versions have been measured.
 
 ## Start the virtual camera
 
 ```powershell
-.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Backend obs
+.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -Backend obs
 ```
 
 The launcher creates an isolated `.venv-webcam`, installs the locked-range

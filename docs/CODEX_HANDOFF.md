@@ -46,7 +46,9 @@ Clean-base results:
   at `src-tauri/target/release/Luna Ultra Webcam Dev` (bundle generation was
   intentionally disabled for this environment check).
 - A native Windows bundle was not possible from the Linux managed environment.
-  This must be run on Windows before calling the Windows baseline complete.
+  A subsequent user-run Windows build at commit `38f6ef5` produced the native
+  executable plus MSI and NSIS bundles successfully. The bundles remain local
+  development artifacts and have not been installed or distributed.
 
 ## Implemented changes
 
@@ -117,6 +119,18 @@ the numbers above.
 6. Measure glass-to-glass latency with a documented method. Do not infer latency
    from the UCD2 packet counter.
 7. Camera audio remains unknown and absent from the bridge.
+
+## Hardware evidence reported 2026-10-03
+
+- On the user's Luna Ultra, slow-motion mode produced a moving preview while
+  the other tested modes displayed a stale still frame. Firmware and the
+  working upstream application version still need to be recorded.
+- The control-session relay used `http://127.0.0.1:49183/stream`.
+- PyAV 16.1 decoded 30/30 real-camera HEVC frames at 1280×720. The decoder
+  reported 25 fps and completed the 30-frame probe in 3.315 seconds.
+- This proves external decoding of the real camera feed in slow-motion mode.
+  It does not yet prove virtual-camera publication, other camera modes,
+  reconnect behavior, sustained operation, audio, or glass-to-glass latency.
 
 ## Phase 0 repository safeguards
 
