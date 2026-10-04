@@ -140,6 +140,10 @@ the numbers above.
   the live feed. The Windows Camera app did not list the device in this portrait
   configuration, so standard landscape output plus Teams and Zoom still need
   testing.
+- A later webcamtests.com run measured the standard landscape output as
+  1280×720, RGB, 25 fps, 0.92 megapixels, with no camera microphone or speaker.
+  This independently confirms the requested virtual-device format; the absent
+  audio matches the current video-only bridge design.
 - A subsequent Discord test published 1280×720 at 25 fps four times. Three
   Ctrl+C stop/restart cycles returned to moving video, and the fourth instance
   remained active. One start encountered transient loopback-stream errors,

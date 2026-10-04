@@ -84,10 +84,23 @@ and restarted, then while the camera Wi-Fi was disconnected and reconnected;
 moving video recovered without restarting the bridge or Discord in both cases.
 The observed recovery was immediate, but it was not timed.
 
+A browser test measured the virtual device as 1280×720, RGB, 25 fps, with no
+built-in microphone. Setting `-Fps 60` makes the virtual camera submit its most
+recent frame 60 times per second, but it does not create 60 unique camera frames.
+With the currently observed 25 fps Luna preview, most of those submissions are
+duplicates. True 60 fps motion requires the camera's elementary preview stream
+itself to deliver approximately 60 newly decoded frames per second.
+
+Likewise, `-Width 1920 -Height 1080` exposes a 1080p virtual-camera format but
+does not add detail to a 1280×720 source. A 16:9 source is scaled to fill 1080p;
+4:3 and portrait sources are scaled to fit with black bars instead of being
+stretched. Test 1080p30 before 1080p60 because RGB submission cost grows with
+both pixel count and output cadence.
+
 Useful options:
 
 ```powershell
-# Explicit output cadence after measuring the real feed
+# Explicit virtual-camera cadence after measuring the real feed
 .\tools\start-webcam.ps1 -Fps 30
 
 # Letterbox into 1920×1080 without stretching a 4:3 camera feed
