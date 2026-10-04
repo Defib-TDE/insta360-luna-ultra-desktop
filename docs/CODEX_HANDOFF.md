@@ -132,11 +132,14 @@ the numbers above.
   1280×720, 720×1280, and 1280×960, with completion times from 1.140 to 3.315
   seconds. The user had switched modes between probes, but the exact
   mode-to-result sequence was not recorded.
-- A later 250-frame HEVC probe measured 1280×720, 0.528 seconds to first frame,
-  and 29.981 decoded frames per second over 8.834 seconds. This establishes an
-  approximately 30 fps source cadence in the then-current camera mode and shows
-  that FFmpeg's 25 fps value was only a raw-stream heuristic. The exact camera
-  mode name still needs recording.
+- Six later 250-frame HEVC probes covered Slow-mo, Photo, Pano, Timelapse, Pure,
+  and Video in that order. Slow-mo and Pano produced 1280×720 at 29.981 and
+  30.013 decoded fps; Photo, Pure, and Video produced 720×1280 at 29.992,
+  29.966, and 30.025 decoded fps; Timelapse produced 1280×960 at 23.700 decoded
+  fps. Time to first frame ranged from 0.528 to 1.919 seconds. This establishes
+  an approximately 30 fps maximum across the tested previews; Timelapse appears
+  closer to 24 fps. It also shows that FFmpeg's 25 fps value was only a
+  raw-stream heuristic.
 - This proves repeated external decoding of the real camera feed across the
   tested mode switches.
 - `pyvirtualcam` 0.15 published a 720×1280, 25 fps feed through the OBS backend.

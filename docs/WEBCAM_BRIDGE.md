@@ -53,9 +53,21 @@ second:
 Run the long probe separately in each camera mode being evaluated. Do not infer
 the source maximum from the virtual camera's advertised `-Fps` value.
 
-The first 250-frame hardware sample measured 1280×720, 0.528 seconds to first
-frame, and 29.981 observed decoded frames per second over 8.834 seconds. Use 30
-fps for that mode; its exact camera-mode name was not recorded.
+Six 250-frame hardware samples produced the following source measurements:
+
+| Mode | Source size | Observed decode FPS | First frame | Total time |
+| --- | --- | ---: | ---: | ---: |
+| Slow-mo | 1280×720 | 29.981 | 0.528 s | 8.834 s |
+| Photo | 720×1280 | 29.992 | 1.288 s | 9.590 s |
+| Pano | 1280×720 | 30.013 | 0.531 s | 8.828 s |
+| Timelapse | 1280×960 | 23.700 | 1.919 s | 12.425 s |
+| Pure | 720×1280 | 29.966 | 1.854 s | 10.164 s |
+| Video | 720×1280 | 30.025 | 0.793 s | 9.086 s |
+
+No tested preview approached 60 decoded fps. Even Slow-mo's preview is about 30
+fps. The evidence-backed maximum is approximately 30 fps, while Timelapse's
+1280×960 preview appears closer to 24 fps. The largest native preview by pixel
+count is 1280×960; 1920×1080 output remains an upscale.
 
 An independent FFmpeg check is also useful:
 
