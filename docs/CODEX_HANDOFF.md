@@ -128,9 +128,15 @@ the numbers above.
   application version still need to be recorded.
 - The control-session relay used `http://127.0.0.1:49183/stream`.
 - PyAV 16.1 completed six 30/30-frame real-camera HEVC probes. Every probe
-  reported 25 fps; observed dimensions were 1280×720, 720×1280, and 1280×960,
-  with completion times from 1.140 to 3.315 seconds. The user had switched
-  modes between probes, but the exact mode-to-result sequence was not recorded.
+  carried FFmpeg's 25 fps elementary-stream estimate; observed dimensions were
+  1280×720, 720×1280, and 1280×960, with completion times from 1.140 to 3.315
+  seconds. The user had switched modes between probes, but the exact
+  mode-to-result sequence was not recorded.
+- A later 250-frame HEVC probe measured 1280×720, 0.528 seconds to first frame,
+  and 29.981 decoded frames per second over 8.834 seconds. This establishes an
+  approximately 30 fps source cadence in the then-current camera mode and shows
+  that FFmpeg's 25 fps value was only a raw-stream heuristic. The exact camera
+  mode name still needs recording.
 - This proves repeated external decoding of the real camera feed across the
   tested mode switches.
 - `pyvirtualcam` 0.15 published a 720×1280, 25 fps feed through the OBS backend.

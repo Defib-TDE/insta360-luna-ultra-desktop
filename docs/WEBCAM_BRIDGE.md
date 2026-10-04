@@ -31,9 +31,10 @@ From PowerShell at the repository root:
 Success is one JSON line containing `decodedFrames`, `width`, `height`, and the
 decoder's frame-rate estimate. Record the output rather than assuming 1080p;
 published testing found 1280×960 H.264, but the connected camera and firmware
-are authoritative. On 2026-10-03, six fork hardware probes decoded HEVC at a
-reported 25 fps across mode switches, with observed dimensions of 1280×720,
-720×1280, and 1280×960. Select HEVC explicitly for that tested camera:
+are authoritative. On 2026-10-03, six fork hardware probes decoded HEVC across
+mode switches, with observed dimensions of 1280×720, 720×1280, and 1280×960.
+Their 25 fps field was FFmpeg's elementary-stream estimate, not a wall-clock
+measurement. Select HEVC explicitly for that tested camera:
 
 ```powershell
 .\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -ProbeOnly
@@ -51,6 +52,10 @@ second:
 
 Run the long probe separately in each camera mode being evaluated. Do not infer
 the source maximum from the virtual camera's advertised `-Fps` value.
+
+The first 250-frame hardware sample measured 1280×720, 0.528 seconds to first
+frame, and 29.981 observed decoded frames per second over 8.834 seconds. Use 30
+fps for that mode; its exact camera-mode name was not recorded.
 
 An independent FFmpeg check is also useful:
 
@@ -86,7 +91,7 @@ DirectShow, Chrome, and Discord did, so use a standard 1280×720 output for the
 broadest compatibility:
 
 ```powershell
-.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -Backend obs -Width 1280 -Height 720 -Fps 25
+.\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -Backend obs -Width 1280 -Height 720 -Fps 30
 ```
 
 The first 1280×720 Discord validation completed three Ctrl+C stop/restart
@@ -97,12 +102,14 @@ and restarted, then while the camera Wi-Fi was disconnected and reconnected;
 moving video recovered without restarting the bridge or Discord in both cases.
 The observed recovery was immediate, but it was not timed.
 
-A browser test measured the virtual device as 1280×720, RGB, 25 fps, with no
-built-in microphone. Setting `-Fps 60` makes the virtual camera submit its most
-recent frame 60 times per second, but it does not create 60 unique camera frames.
-With the currently observed 25 fps Luna preview, most of those submissions are
-duplicates. True 60 fps motion requires the camera's elementary preview stream
-itself to deliver approximately 60 newly decoded frames per second.
+A browser test measured the deliberately configured virtual device as 1280×720,
+RGB, 25 fps, with no built-in microphone. A longer source probe subsequently
+measured approximately 30 decoded frames per second. Setting `-Fps 60` makes the
+virtual camera submit its most recent frame 60 times per second, but it does not
+create 60 unique camera frames; at the measured source cadence, roughly half
+the submissions are duplicates. True 60 fps motion requires the camera's
+elementary preview stream itself to deliver approximately 60 newly decoded
+frames per second.
 
 Likewise, `-Width 1920 -Height 1080` exposes a 1080p virtual-camera format but
 does not add detail to a 1280×720 source. A 16:9 source is scaled to fill 1080p;
