@@ -199,6 +199,7 @@ export function useCamera() {
     host,
     error,
     loadingLibrary,
+    wantConnection,
     isConnected,
     isBusy,
     available,

@@ -218,8 +218,8 @@ async function openHelp(topic: "obs" | "python") {
             <p class="px-1 text-xs leading-relaxed text-muted">
               {{
                 profileId === "portrait"
-                  ? "Portrait preserves a vertical source. Photo, Pure and Video were measured vertically on your camera."
-                  : "Landscape fits your source with black bars if needed. Slow-mo and Pano were measured at 720p landscape."
+                  ? "Fits a vertical source without stretching. Source orientation depends on the camera’s mode."
+                  : "Keeps your source proportions, with black bars when needed. Camera mode determines the native picture."
               }}
               {{
                 profileId === "fullhd"

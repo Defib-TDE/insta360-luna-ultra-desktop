@@ -69,6 +69,7 @@ describe("Studio session ownership", () => {
   });
 
   async function connectAndStart() {
+    vm.camera.wantConnection.value = true;
     vm.camera.status.value = "connected";
     await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
     vm.webcam.start();
@@ -144,6 +145,14 @@ describe("Studio session ownership", () => {
     vm.camera.status.value = "connected";
     await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
     expect(client.start).toHaveBeenCalledOnce();
+  });
+
+  it("releases output on an explicit disconnect instead of promising automatic recovery", async () => {
+    await connectAndStart();
+    await vm.camera.disconnect();
+    await vi.waitFor(() => expect(vm.webcam.wanted.value).toBe(false));
+    await vi.waitFor(() => expect(client.stop).toHaveBeenCalledOnce());
+    expect(vm.live.active.value).toBe(false);
   });
 
   it("surfaces native start failures and does not endlessly spawn workers", async () => {

@@ -52,6 +52,9 @@ one-file so the app supervises the actual process, not an extraction child.
 4. Click **Start webcam**. Select **OBS Virtual Camera** in Chrome or Discord.
    Navigation to Settings should not interrupt the output. Click **Stop webcam**
    to release the publisher. Closing Luna terminates its supervised helper.
+   Clicking **Disconnect** also releases output; a Wi-Fi interruption preserves
+   it for recovery. Windows Camera need not list a DirectShow virtual camera;
+   use a browser, conferencing app or OBS for the acceptance test.
 5. In Settings, choose the camera's white or black body once. The choice is
    remembered by serial and follows that camera when it reconnects. “Auto”
    follows app theme, not a verified camera-body detection field.

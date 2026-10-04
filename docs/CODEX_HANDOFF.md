@@ -26,6 +26,8 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - The shell owns stream lifetime: leaving Camera/Studio only stops preview
   when no webcam needs it. Output uses the established control-session relay;
   reconnect passes the actual URL if the fallback port changes.
+  Wi-Fi loss preserves desired output; an explicit or health-forced Disconnect
+  releases it rather than promising endless recovery.
 - Windows builds bundle a one-directory PyInstaller engine and build local
   MSI/NSIS installers. End users should not need Python. Unbundled development
   builds retain explicit private-runtime setup. No public installer upload or
@@ -41,7 +43,7 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 
 ### Studio verification in the managed environment
 
-- 324 unit tests, 44 Nuxt-runtime tests and 18 Rust tests passed.
+- 324 unit tests, 45 Nuxt-runtime tests and 18 Rust tests passed.
 - Four Python simulations passed with PyAV 16.1/numpy/pyvirtualcam imports.
   They cover decoded-frame replacement, source cadence events, stale slates and
   recovery. A fake virtual-camera sink is not OBS hardware validation.
@@ -55,6 +57,10 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - Windows CI now compiles native tests, builds the video engine and local
   installers, and checks the staged helper imports. No installer artifacts are
   uploaded. CI is separate from a clean-machine install or hardware test.
+- [Windows CI for Studio commit 9a052d5](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37177816492)
+  passed native tests, MSI/NSIS creation, the staged helper's `--check-runtime`
+  and all four Python bridge simulations. OBS driver/camera use is not part of
+  that runner test. A clean-machine installation is still unverified.
 
 ## Repository and remotes
 

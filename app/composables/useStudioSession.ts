@@ -30,6 +30,14 @@ export function useStudioSession() {
     }
     if (!camera.isConnected.value) {
       if (live.active.value) await live.stop();
+      // Wi-Fi loss keeps the user's connection intent; an explicit Disconnect
+      // (or a health-forced disconnect) must release output, not retry forever.
+      if (!camera.wantConnection.value && webcam.wanted.value) {
+        webcam.wanted.value = false;
+        await getWebcamClient().stop();
+        await webcam.refresh();
+        startedRequest = -1;
+      }
       return;
     }
     if (!preview && !webcam.wanted.value) {
