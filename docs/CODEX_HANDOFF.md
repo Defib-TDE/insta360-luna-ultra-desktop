@@ -138,9 +138,10 @@ the numbers above.
   NV12 frames in 1.17 seconds. This proves real-camera virtual-device
   publication and external consumption. Chrome then selected **OBS Virtual
   Camera** on webcamtests.com and rendered the live Luna feed, proving browser
-  WebRTC consumption as well. The Windows Camera app did not list the device in
-  this portrait configuration, so standard landscape output and the target
-  conferencing applications still need testing.
+  WebRTC consumption as well. Discord also selected the OBS camera and rendered
+  the live feed. The Windows Camera app did not list the device in this portrait
+  configuration, so standard landscape output plus Teams and Zoom still need
+  testing.
 - Reconnect behavior, sustained operation, audio, and glass-to-glass latency
   remain unproven.
 

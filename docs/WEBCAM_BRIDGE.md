@@ -67,8 +67,9 @@ driver rather than already publishing its own scene to it.
 The first fork hardware test successfully published 720×1280 at 25 fps through
 the OBS backend and consumed 30 NV12 frames through Windows DirectShow. Chrome
 also selected **OBS Virtual Camera** on webcamtests.com and displayed the live
-Luna feed. The Windows Camera app did not list that portrait-format device even
-though DirectShow and Chrome did, so use a standard 1280×720 output for the
+Luna feed, and Discord selected the same camera and rendered the feed. The
+Windows Camera app did not list that portrait-format device even though
+DirectShow, Chrome, and Discord did, so use a standard 1280×720 output for the
 broadest compatibility:
 
 ```powershell
