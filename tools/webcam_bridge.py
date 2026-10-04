@@ -176,6 +176,7 @@ def decode_latest(
     stop: threading.Event,
 ) -> None:
     delay = 0.5
+    recovering = False
     target_width = args.width
     target_height = args.height
     while not stop.is_set():
@@ -187,6 +188,9 @@ def decode_latest(
                 for frame in container.decode(video=0):
                     if stop.is_set():
                         return
+                    if recovering:
+                        print("Stream recovered.", file=sys.stderr)
+                        recovering = False
                     if not target_width:
                         target_width, target_height = frame.width, frame.height
                     pixels = frame_pixels(frame, target_width, target_height, args.mirror, numpy)
@@ -196,12 +200,14 @@ def decode_latest(
                     )
                     received = True
                     delay = 0.5
-                if received:
+                if received and not stop.is_set():
                     print("Stream ended; waiting to reconnect...", file=sys.stderr)
+                    recovering = True
         except Exception as error:  # PyAV exposes several FFmpeg exception types.
             if stop.is_set():
                 return
             print(f"Stream unavailable ({error}); retrying in {delay:.1f}s...", file=sys.stderr)
+            recovering = True
         stop.wait(delay)
         delay = min(delay * 2, 5.0)
 

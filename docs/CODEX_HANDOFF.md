@@ -107,18 +107,16 @@ the numbers above.
 
 ## Hardware and Windows work still required
 
-1. Run `bun run build` on Windows with Bun, Rust MSVC, WebView2, and the Tauri
-   prerequisites. Confirm the resulting product name, executable, install path,
-   and uninstall entry are distinct from the installed upstream app.
-2. Record the camera firmware and the working upstream installed-app version.
-3. Run the probe in `docs/WEBCAM_BRIDGE.md` against the actual copied URL and
-   record codec, profile, dimensions, FPS, and time-to-first-frame.
-4. Confirm OBS Virtual Camera publication and selection in Teams and Zoom.
-5. Complete cold start, late join, repeated stop/restart, app stream restart,
-   Wi-Fi reconnect, and at least a 60-minute sustained run.
-6. Measure glass-to-glass latency with a documented method. Do not infer latency
+1. Record the camera firmware and the working upstream installed-app version.
+2. Map exact camera-mode names to the observed codec and dimensions.
+3. Confirm OBS Virtual Camera selection in Teams and Zoom.
+4. Complete a timed late-join check and at least a 60-minute sustained run.
+5. Measure glass-to-glass latency with a documented method. Do not infer latency
    from the UCD2 packet counter.
-7. Camera audio remains unknown and absent from the bridge.
+6. Camera audio remains unknown and absent from the bridge.
+7. Installer identity and coexistence remain unverified because the locally
+   built bundles are intentionally not being installed or distributed while
+   licensing is unresolved.
 
 ## Hardware evidence reported 2026-10-03
 
@@ -147,9 +145,14 @@ the numbers above.
   remained active. One start encountered transient loopback-stream errors,
   backed off from 0.5 to 2 seconds, and recovered without restarting the Luna
   app or bridge. This verifies bridge restart and one short automatic-reconnect
-  path; app-stream restart and Wi-Fi interruption remain separate tests.
-- App-stream and Wi-Fi reconnect behavior, sustained operation, audio, and
-  glass-to-glass latency remain unproven.
+  path.
+- With the 1280×720 bridge and Discord session left running, deliberately
+  leaving and re-entering the app's Camera page recovered moving video without
+  restarting either consumer. Disconnecting and reconnecting the camera Wi-Fi
+  also recovered immediately by visual observation. The bridge logged bounded
+  0.5, 1, and 2 second retries during the interruption. Exact recovery time was
+  not instrumented, so this is a qualitative recovery result.
+- Sustained operation, audio, and glass-to-glass latency remain unproven.
 
 ## Phase 0 repository safeguards
 

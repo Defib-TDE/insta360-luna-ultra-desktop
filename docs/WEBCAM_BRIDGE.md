@@ -78,8 +78,11 @@ broadest compatibility:
 
 The first 1280×720 Discord validation completed three Ctrl+C stop/restart
 cycles and returned to live video each time. One start also recovered from
-transient loopback-stream errors after bounded retries. This does not replace
-the deliberate app-stream restart and Wi-Fi interruption tests below.
+transient loopback-stream errors after bounded retries. A subsequent test left
+the bridge and Discord running while the app stream was deliberately stopped
+and restarted, then while the camera Wi-Fi was disconnected and reconnected;
+moving video recovered without restarting the bridge or Discord in both cases.
+The observed recovery was immediate, but it was not timed.
 
 Useful options:
 
