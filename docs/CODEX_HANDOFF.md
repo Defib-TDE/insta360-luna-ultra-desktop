@@ -122,14 +122,17 @@ the numbers above.
 
 ## Hardware evidence reported 2026-10-03
 
-- On the user's Luna Ultra, slow-motion mode produced a moving preview while
-  the other tested modes displayed a stale still frame. Firmware and the
-  working upstream application version still need to be recorded.
+- On the user's Luna Ultra, the first mode switches temporarily left stale
+  still frames, but subsequent cycling produced moving previews in every mode
+  tested. Firmware, exact mode-to-result labels, and the working upstream
+  application version still need to be recorded.
 - The control-session relay used `http://127.0.0.1:49183/stream`.
-- PyAV 16.1 decoded 30/30 real-camera HEVC frames at 1280×720. The decoder
-  reported 25 fps and completed the 30-frame probe in 3.315 seconds.
-- This proves external decoding of the real camera feed in slow-motion mode.
-  It does not yet prove virtual-camera publication, other camera modes,
+- PyAV 16.1 completed six 30/30-frame real-camera HEVC probes. Every probe
+  reported 25 fps; observed dimensions were 1280×720, 720×1280, and 1280×960,
+  with completion times from 1.140 to 3.315 seconds. The user had switched
+  modes between probes, but the exact mode-to-result sequence was not recorded.
+- This proves repeated external decoding of the real camera feed across the
+  tested mode switches. It does not yet prove virtual-camera publication,
   reconnect behavior, sustained operation, audio, or glass-to-glass latency.
 
 ## Phase 0 repository safeguards

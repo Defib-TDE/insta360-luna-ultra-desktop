@@ -31,9 +31,9 @@ From PowerShell at the repository root:
 Success is one JSON line containing `decodedFrames`, `width`, `height`, and the
 decoder's frame-rate estimate. Record the output rather than assuming 1080p;
 published testing found 1280×960 H.264, but the connected camera and firmware
-are authoritative. On 2026-10-03, the first fork hardware probe found
-1280×720 HEVC at a reported 25 fps in slow-motion mode. Select HEVC explicitly
-when testing that mode:
+are authoritative. On 2026-10-03, six fork hardware probes decoded HEVC at a
+reported 25 fps across mode switches, with observed dimensions of 1280×720,
+720×1280, and 1280×960. Select HEVC explicitly for that tested camera:
 
 ```powershell
 .\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -ProbeOnly
