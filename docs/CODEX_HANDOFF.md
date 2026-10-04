@@ -142,8 +142,14 @@ the numbers above.
   the live feed. The Windows Camera app did not list the device in this portrait
   configuration, so standard landscape output plus Teams and Zoom still need
   testing.
-- Reconnect behavior, sustained operation, audio, and glass-to-glass latency
-  remain unproven.
+- A subsequent Discord test published 1280×720 at 25 fps four times. Three
+  Ctrl+C stop/restart cycles returned to moving video, and the fourth instance
+  remained active. One start encountered transient loopback-stream errors,
+  backed off from 0.5 to 2 seconds, and recovered without restarting the Luna
+  app or bridge. This verifies bridge restart and one short automatic-reconnect
+  path; app-stream restart and Wi-Fi interruption remain separate tests.
+- App-stream and Wi-Fi reconnect behavior, sustained operation, audio, and
+  glass-to-glass latency remain unproven.
 
 ## Phase 0 repository safeguards
 

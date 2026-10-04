@@ -199,6 +199,8 @@ def decode_latest(
                 if received:
                     print("Stream ended; waiting to reconnect...", file=sys.stderr)
         except Exception as error:  # PyAV exposes several FFmpeg exception types.
+            if stop.is_set():
+                return
             print(f"Stream unavailable ({error}); retrying in {delay:.1f}s...", file=sys.stderr)
         stop.wait(delay)
         delay = min(delay * 2, 5.0)

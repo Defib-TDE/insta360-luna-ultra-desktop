@@ -76,6 +76,11 @@ broadest compatibility:
 .\tools\start-webcam.ps1 -Url http://127.0.0.1:49183/stream -Codec hevc -Backend obs -Width 1280 -Height 720 -Fps 25
 ```
 
+The first 1280×720 Discord validation completed three Ctrl+C stop/restart
+cycles and returned to live video each time. One start also recovered from
+transient loopback-stream errors after bounded retries. This does not replace
+the deliberate app-stream restart and Wi-Fi interruption tests below.
+
 Useful options:
 
 ```powershell
