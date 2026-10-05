@@ -73,10 +73,41 @@ Streaming** control. Do not start OBS's virtual-camera publisher, which would
 compete with Luna for the same output.
 
 For Whatnot, follow the broadcaster's current account/platform instructions;
-availability and broadcast configuration can vary. Actual Whatnot broadcasting
-has not been tested here. The app does not claim a show is live just because
-its local webcam is publishing. Direct in-app RTMP and camera audio are later
-phases, not features in this build.
+its [official OBS guide](https://help.whatnot.com/hc/en-us/articles/5497980244749-Using-OBS-with-your-Livestream)
+currently uses **Show Tools**, OBS WebSocket and **WHIP**, with a **1080×1920**
+vertical canvas. Let Show Tools apply the required profile/settings and the
+per-show bearer token. After initial profile setup, close/reopen OBS and reconnect
+Show Tools as the official guide instructs; start the show from Show Tools.
+Luna's 720×1280 portrait output can be scaled by OBS, but its native source detail
+does not increase. Keep OBS's virtual-camera publisher stopped while Luna owns it.
+
+Availability and broadcast configuration can vary. Actual Whatnot broadcasting
+has not been tested here. Studio's current guide is generic; use the official
+instructions above for Whatnot. The app does not claim a show is live just because
+its local webcam is publishing. Direct in-app broadcasting and camera audio are
+later phases, not features in this build.
+
+## Camera quality, portable networking and exams
+
+Full HD changes virtual-camera output size, not the current fixed preview
+request or camera mode. Automatic camera preparation and preview-resolution
+negotiation are planned; see [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) for evidence,
+mode/orientation recommendations and the hardware test gates.
+
+On an MSI Claw or another single-Wi-Fi PC, plan **camera Wi-Fi + USB-C Ethernet
+for internet**, or **home Wi-Fi + a second USB Wi-Fi adapter for the camera**.
+Wi-Fi 7 does not establish simultaneous access to two unrelated networks on one
+adapter. Check both camera reachability and internet access before a live show.
+Luna USB-C file transfer is supported; direct USB webcam use is officially
+unsupported, and model-specific USB preview support is not established.
+
+The Luna/OBS bridge is **not established as WGU-approved**. WGU specifies an
+external webcam with microphone, placement/cable requirements and Guardian
+Browser. Guardian may require background capture/streaming applications to close.
+Use a physical external USB webcam meeting WGU's specifications for exams unless
+WGU and the proctoring provider confirm this exact software-assisted setup.
+Browser webcam tests do not establish exam-policy acceptance. Details and official
+policy links are in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md#wgu--proctored-exams).
 
 ## Acceptance pass on real hardware
 

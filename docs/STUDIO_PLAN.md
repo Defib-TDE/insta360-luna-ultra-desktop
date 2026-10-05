@@ -14,6 +14,9 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
 - HEVC decoding, DirectShow, Chrome and Discord are hardware tested.
 - Bridge stop/restart, app stream restart and Wi-Fi recovery passed on the
   user's Windows machine. The hour-long soak and measured latency remain open.
+- The integrated Studio build at `bdf7157` also worked on Windows after an
+  initially finicky connection was resolved by reconnecting. This is an initial
+  hardware pass, not proof of repeatable cold starts or the full acceptance suite.
 - The tested preview profiles span 1280×720, 720×1280 and 1280×960. Five modes
   deliver about 30 decoded fps; Timelapse delivered 23.7. These are observed
   configurations, not proof of the firmware's absolute maximum.
@@ -53,8 +56,16 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
 
 ## Next iterations
 
-- Validate this new UI and process supervisor on Windows, then Teams/Zoom and
-  the actual Whatnot broadcast workflow. Run the hour-long soak.
+- Follow the source-backed recommendations in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md).
+  The user now requests profile-based camera preparation. Verify accepted mode
+  writes and actual readback, recording guards, source orientation and bounded
+  recovery before enabling it. Preserve a fixed-mode compatibility option.
+- Test ordinary Video in both shooting orientations before making Slow-mo the
+  default landscape mode. Investigate the preview request's resolution field
+  with known-good fallback; native 1080p/60fps remain unverified.
+- Make startup recover from an acknowledged but silent preview and distinguish
+  connection, first bytes, first decoded frame and virtual-device publication.
+  Validate repeated cold starts, then Teams/Zoom, Whatnot and the hour-long soak.
 - Preview the exact composed output; add rotate, crop-to-fill, framing guides
   and saved per-destination scenes after the native source orientation is
   checked against the camera display.
@@ -62,10 +73,21 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
   installation on a clean machine without Python and side-by-side identity.
   Review bundled notices, signing, WebView2 provisioning and uninstall cleanup.
   Publish installers only after upstream licensing is resolved.
-- Add direct RTMP only with explicit destination configuration, secure stream
+- Guide Whatnot through its current Show Tools/OBS WebSocket/WHIP workflow and
+  1080×1920 OBS canvas. Validate a real show; generic RTMP is not its assumed path.
+- Add generic direct RTMP only with explicit destination configuration, secure stream
   key storage, microphone capture, synchronization, encoder metrics and
   reconnection rules. Never infer remote broadcast state from local output.
 - Audit and stabilize camera mode/control writes using hardware evidence.
+- Add separate camera/internet reachability checks. Validate the MSI Claw using
+  camera Wi-Fi plus USB-C Ethernet, then a second Wi-Fi adapter if needed.
+  Native Luna USB webcam/preview support has not been established.
+- Keep proctored-exam suitability unclaimed. WGU requires an external camera,
+  microphone and placement specifications; Guardian software acceptance needs
+  confirmation from the institution/provider. Recommend a physical USB webcam
+  for exams until that is resolved.
+- Review upstream `v0.3.3` large-download and transfer-aware keepalive changes
+  separately, adapting them to the fork's session/relay code and app identity.
 
 ## Acceptance checks
 
@@ -90,4 +112,5 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
 | 5 — Camera polish | Better mode/control reliability and advanced framing | Evidence-backed protocol changes, no blind mode writes |
 
 Phase 2 implementation and the Phase 3 packaging pipeline are included in this
-change. New in-app webcam behavior is not yet claimed as hardware tested.
+change. The user reports an initial integrated Windows hardware pass, including
+recovery after a manual reconnect. The complete acceptance suite remains open.

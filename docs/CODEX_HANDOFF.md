@@ -9,9 +9,49 @@ maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 Deliver a separately identified, non-updating development build that exposes a
 restart-safe, decoder-friendly real camera stream and provides the smallest
 reliable Windows virtual-camera path, now integrated into an easy Studio UI.
-Camera mode remains fixed. Guided OBS streaming is included; direct in-app
-broadcasting, camera audio, and broader camera-control work remain later phases.
+The current build leaves camera mode fixed; the user now requests automatic
+profile-based camera preparation, following research and verified mode/orientation
+handling. Guided OBS streaming is included; direct in-app broadcasting, camera
+audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
+
+## Latest research and user feedback (2026-10-04)
+
+- The user rebuilt `bdf7157` on Windows. The uploaded transcript confirms bundled
+  engine imports, optimized native compilation and local MSI/NSIS creation.
+  They report the integrated app worked well after manually reconnecting on
+  initial startup and liked its appearance. Record this as a limited integrated
+  hardware pass; repeated cold starts and the full acceptance suite remain open.
+- Selecting Full HD kept the source size unchanged. This is expected: Studio
+  changes output scaling, while Rust's preview request remains fixed at field
+  7 = 9. Native preview 1080p/60fps have not been negotiated or measured.
+- Read [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) before implementing automation.
+  Official Luna docs separate shooting orientation from mode, so test ordinary
+  Video in landscape/portrait before universally forcing Slow-mo. The shared
+  mode switch currently ignores accepted-option results and does not reliably
+  verify actual mode; repair that and strict recording-status guards first.
+- Investigate accepted-but-silent preview recovery, the helper's unbounded
+  first-frame wait, reader EOF/error recovery and incomplete GOP caching after
+  source lag. The user's initial startup issue is not yet root-caused.
+- Whatnot's current official path is Show Tools + OBS WebSocket + WHIP with a
+  1080×1920 canvas and per-show token. Setup docs now reflect it; Studio's generic
+  in-app guide still needs a dedicated update. No actual Whatnot show was tested.
+- WGU acceptance of Luna/OBS is unestablished. Recommend a physical external USB
+  webcam meeting WGU's microphone/placement requirements unless the institution
+  and provider confirm this bridge. A native virtual camera or USB software
+  transport would not by itself establish exam approval. Do not conceal the
+  background helper or rename a virtual camera to imply physical hardware.
+- MSI Claw networking should first validate camera Wi-Fi + USB-C Ethernet;
+  dual physical Wi-Fi adapters are a portable alternative. A single Wi-Fi 7
+  adapter is not verified to join both Luna and home networks. Native Luna UVC
+  is officially unsupported; model-specific USB preview/USB networking remain
+  research questions, not implemented routes.
+- Fetched upstream read-only: `v0.3.3` at `11b1acb` adds the `d9cfd0d` large-file
+  streaming/transfer-aware keepalive fix. It has not been merged. Adapt/review it
+  separately against our modified `luna.rs`; preserve development identity,
+  disabled updates and upstream push protection. Upstream still has no license.
+- This follow-up changes research/setup/handoff documentation only. The working
+  camera protocol, app code and installed upstream application remain intact.
 
 ## Current Studio increment (2026-10-04)
 
@@ -37,9 +77,10 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   persist but never start the webcam automatically on launch.
 - The Python bridge reports measured decode cadence and sends a neutral slate
   after two seconds without a fresh frame, with recovery status events.
-- Existing external-bridge hardware results below do **not** validate the new
-  integrated UI/supervisor. A Windows rebuild and hardware acceptance pass are
-  still required. Follow STUDIO_SETUP.md and keep the installed upstream app.
+- The latest report above provides an initial integrated Windows pass; the
+  earlier external-bridge tests below validate only that earlier path. Finish
+  the integrated acceptance suite in STUDIO_SETUP.md and keep the installed
+  upstream app intact.
 
 ### Studio verification in the managed environment
 
