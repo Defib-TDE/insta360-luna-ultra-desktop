@@ -52,11 +52,21 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   PnP/USB/network/DirectShow inventory script and CI smoke test. Before/after
   instructions are in [DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md).
 - Automated results: 333 unit tests and 51 Nuxt runtime tests; six Python
-  simulations with real dependency imports; native Rust tests and optimized
+  simulations with real dependency imports; 23 Rust tests and an optimized
   Linux build. Chromium simulated Start/Stop, mode preparation, manual setting
   preservation and minimum 960×640 layout with no page errors or horizontal
   overflow. This simulation did not receive the user's camera feed or publish
   to a real OBS device. A synthetic paced HEVC loopback decode also passed.
+- [CI for code commit 18923b0](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37389201100)
+  passed all three jobs: frontend, Linux native tests/audit, Windows native
+  tests, Windows inventory smoke test, MSI/NSIS packaging, staged helper imports
+  and all six Python simulations. No installer artifacts were published.
+  This is not a clean-machine install or real USB/Luna test.
+- Dependency versions were not changed in this increment. The Rust audit
+  passed with zero vulnerability-class findings and eight informational
+  warnings, including GTK/glib maintenance/unsoundness notices and a yanked
+  chacha20 version. Review these in a separate dependency-maintenance change;
+  passing CI is not a claim that the dependency tree has no advisories.
 - New mode/recovery behavior and Windows diagnostics require the user's real
   camera/PC pass; prior hardware successes below apply to the earlier builds.
   Five cold starts, recording guard, all profiles, Stop during startup,
