@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { WEBCAM_PROFILES } from "~/utils/webcamProfiles";
 import { openStudioHelp } from "~/utils/webcamClient";
+import { collectCameraReport } from "~/utils/cameraReport";
+import { saveBlob } from "~/utils/saveFile";
 
 useHead({ title: "Studio" });
 const camera = useCamera();
@@ -12,6 +14,9 @@ const {
   profile,
   mirror,
   codec,
+  matchCamera,
+  preparing,
+  cameraMode,
   checking,
   error,
   wanted,
@@ -25,12 +30,15 @@ const {
 const { colorway } = useCameraAppearance();
 const destination = ref("calls");
 const copied = ref(false);
+const collecting = ref(false);
+const reportLocation = ref<string | null>(null);
 const outputStyle = computed(() => ({
   aspectRatio: `${profile.value.width} / ${profile.value.height}`,
 }));
 const busy = computed(() => status.value.phase === "installing");
 const ready = computed(() => environment.value?.runtimeReady && environment.value?.obsInstalled);
 const statusLabel = computed(() => {
+  if (preparing.value) return "Preparing camera mode";
   if (wanted.value && !camera.isConnected.value) return "Reconnecting camera";
   return {
     stopped: "Ready when you are",
@@ -40,6 +48,14 @@ const statusLabel = computed(() => {
     reconnecting: "Recovering video",
     error: "Output needs attention",
   }[status.value.phase];
+});
+const framingHint = computed(() => {
+  if (!status.value.sourceWidth || !status.value.sourceHeight) return null;
+  const vertical = status.value.sourceHeight > status.value.sourceWidth;
+  if (vertical === (profileId.value === "portrait")) return null;
+  return profileId.value === "portrait"
+    ? "Your source is landscape. Set portrait orientation on the camera for a taller picture; output keeps its proportions."
+    : "Your source is portrait. Set landscape orientation on the camera for a wider picture; output keeps its proportions.";
 });
 const sourceLabel = computed(() =>
   status.value.sourceWidth
@@ -59,11 +75,35 @@ async function copyDevice() {
   }
 }
 
-async function openHelp(topic: "obs" | "python") {
+async function openHelp(topic: "obs" | "python" | "whatnot") {
   try {
     await openStudioHelp(topic);
   } catch (cause) {
     error.value = `Could not open setup help: ${String(cause)}`;
+  }
+}
+
+async function exportCameraReport() {
+  collecting.value = true;
+  reportLocation.value = null;
+  try {
+    const report = await collectCameraReport(camera.info.value ?? {}, {
+      codec: codec.value,
+      sourceWidth: status.value.sourceWidth,
+      sourceHeight: status.value.sourceHeight,
+      observedDecodeFps: status.value.sourceFps,
+      outputWidth: profile.value.width,
+      outputHeight: profile.value.height,
+      outputFps: profile.value.fps,
+    });
+    reportLocation.value = await saveBlob(
+      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+      "luna-camera-capabilities.json",
+    );
+  } catch (cause) {
+    error.value = `Camera report could not finish: ${String(cause)}`;
+  } finally {
+    collecting.value = false;
   }
 }
 </script>
@@ -134,18 +174,30 @@ async function openHelp(topic: "obs" | "python") {
                   <h2 class="text-lg font-medium text-white">
                     {{
                       camera.isConnected.value
-                        ? "Bringing your picture in"
+                        ? live.failed.value
+                          ? "Your picture needs a restart"
+                          : preparing
+                            ? "Preparing your camera"
+                            : "Bringing your picture in"
                         : "Meet your next webcam"
                     }}
                   </h2>
                   <p class="max-w-sm text-sm text-white/50">
                     {{
                       camera.isConnected.value
-                        ? "The preview starts as soon as the camera sends video."
+                        ? live.failed.value
+                          ? "The camera did not send video. Retry the preview, or reconnect Luna if it stays stuck."
+                          : "The preview starts as soon as the camera sends video."
                         : "Join your Luna’s Wi-Fi, then connect. Your live picture will appear here."
                     }}
                   </p>
                 </div>
+                <UButton
+                  v-if="camera.isConnected.value && live.failed.value"
+                  label="Retry preview"
+                  icon="i-lucide-refresh-cw"
+                  @click="live.retry({ elementary: wanted })"
+                />
                 <UButton
                   v-if="!camera.isConnected.value"
                   label="Connect Luna"
@@ -227,6 +279,13 @@ async function openHelp(topic: "obs" | "python") {
                   : ""
               }}
             </p>
+            <p
+              v-if="framingHint"
+              class="px-1 text-xs leading-relaxed text-amber-600 dark:text-amber-300"
+              role="status"
+            >
+              {{ framingHint }}
+            </p>
 
             <div
               class="grid grid-cols-3 divide-x divide-default rounded-2xl border border-default bg-default/70 py-4 text-center"
@@ -243,7 +302,9 @@ async function openHelp(topic: "obs" | "python") {
               </div>
               <div>
                 <p class="text-[10px] uppercase tracking-widest text-muted">Output</p>
-                <p class="mt-1 font-mono text-xs text-highlighted">{{ profile.fps }} fps</p>
+                <p class="mt-1 font-mono text-xs text-highlighted">
+                  {{ status.outputFps ?? profile.fps }} fps
+                </p>
               </div>
             </div>
           </section>
@@ -340,6 +401,25 @@ async function openHelp(topic: "obs" | "python") {
                   />
                 </button>
               </template>
+              <div class="mb-4 border-t border-default pt-4">
+                <div class="flex items-center justify-between gap-3">
+                  <label for="match-camera" class="text-xs text-highlighted"
+                    >Match camera mode</label
+                  >
+                  <USwitch id="match-camera" v-model="matchCamera" :disabled="wanted || busy" />
+                </div>
+                <p class="mt-2 text-[11px] leading-relaxed text-muted">
+                  {{
+                    matchCamera
+                      ? `Start selects ${profile.cameraModeLabel}, then verifies it. Switching to Slow-mo resets its color and filter to Standard.`
+                      : "Keep my camera settings. Start uses the current mode, color and orientation."
+                  }}
+                </p>
+                <p v-if="matchCamera" class="mt-2 text-[11px] leading-relaxed text-muted">
+                  Based on the tested Luna preview. Orientation is set on the camera; recording
+                  resolution does not set preview quality.
+                </p>
+              </div>
               <div
                 class="mb-5 flex items-center justify-between gap-3 border-t border-default pt-4"
               >
@@ -359,8 +439,14 @@ async function openHelp(topic: "obs" | "python") {
               <p class="mt-3 text-center text-[11px] text-muted">
                 {{
                   wanted
-                    ? "Output stays on while you navigate."
-                    : "Your camera mode stays as you set it."
+                    ? preparing
+                      ? "Checking the camera. Stop cancels startup."
+                      : cameraMode
+                        ? `${cameraMode} verified · output stays on while you navigate.`
+                        : "Output stays on while you navigate."
+                    : matchCamera
+                      ? `Camera preparation: ${profile.cameraModeLabel}`
+                      : "Your camera settings stay as you set them."
                 }}
               </p>
             </section>
@@ -426,19 +512,42 @@ async function openHelp(topic: "obs" | "python") {
                     <span class="text-highlighted"
                       >3.
                       {{
-                        destination === "whatnot"
-                          ? "Use a portrait OBS canvas"
-                          : "Set your OBS canvas"
+                        destination === "whatnot" ? "Use Whatnot Show Tools" : "Set your OBS canvas"
                       }}</span
                     >
-                    and configure the platform’s broadcast settings in OBS.
+                    {{
+                      destination === "whatnot"
+                        ? "Connect OBS WebSocket and apply the show’s settings: WHIP, a per-show bearer token and a 1080 × 1920 canvas. Keep the token private."
+                        : "Configure your platform’s broadcast settings in OBS."
+                    }}
                   </li>
                   <li>
-                    <span class="text-highlighted">4. Start Streaming in OBS</span> when your
-                    destination is configured.
+                    <span class="text-highlighted"
+                      >4.
+                      {{
+                        destination === "whatnot"
+                          ? "Follow the Show Tools launch steps"
+                          : "Start Streaming in OBS"
+                      }}</span
+                    >
+                    {{
+                      destination === "whatnot"
+                        ? "Restart OBS after applying the initial profile, then return to Show Tools to start your show. Settings and tokens are specific to each show."
+                        : "when your destination is configured."
+                    }}
                   </li>
                 </template>
               </ol>
+              <UButton
+                v-if="destination === 'whatnot'"
+                class="mt-3"
+                label="Whatnot’s official OBS guide"
+                trailing-icon="i-lucide-arrow-up-right"
+                size="xs"
+                color="neutral"
+                variant="link"
+                @click="openHelp('whatnot')"
+              />
               <p class="mt-4 border-t border-violet-400/15 pt-3 text-[11px] text-muted">
                 Webcam output is local. Broadcast status is managed in your destination app.
               </p>
@@ -452,6 +561,15 @@ async function openHelp(topic: "obs" | "python") {
           color="warning"
           variant="subtle"
           :title="error ?? status.error ?? live.error.value ?? camera.error.value ?? ''"
+        />
+        <UButton
+          v-if="live.active.value && live.error.value && camera.isConnected.value"
+          label="Retry preview"
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="outline"
+          :disabled="preparing"
+          @click="live.retry({ elementary: wanted })"
         />
 
         <details class="rounded-2xl border border-default p-4 text-xs text-muted">
@@ -485,6 +603,21 @@ async function openHelp(topic: "obs" | "python") {
                   <option value="h264">H.264 · other firmware</option>
                 </select></label
               >
+              <UButton
+                label="Export camera report"
+                icon="i-lucide-file-down"
+                size="xs"
+                color="neutral"
+                variant="outline"
+                :loading="collecting"
+                :disabled="!camera.isConnected.value || preparing"
+                @click="exportCameraReport"
+              />
+              <p class="text-[11px]">
+                Reads known camera options through this connection. No settings change; Wi-Fi
+                credentials and device identifiers are omitted.
+              </p>
+              <p v-if="reportLocation" role="status">Saved to {{ reportLocation }}</p>
             </div>
             <pre
               class="max-h-36 overflow-auto whitespace-pre-wrap rounded-xl bg-elevated p-3 font-mono text-[11px]"

@@ -1,6 +1,6 @@
 # Codex handoff: webcam bridge
 
-Updated 2026-10-04 on branch `feature/webcam-bridge` from base
+Updated 2026-10-05 on branch `feature/webcam-bridge` from base
 `696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
 maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
@@ -9,13 +9,60 @@ maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 Deliver a separately identified, non-updating development build that exposes a
 restart-safe, decoder-friendly real camera stream and provides the smallest
 reliable Windows virtual-camera path, now integrated into an easy Studio UI.
-The current build leaves camera mode fixed; the user now requests automatic
-profile-based camera preparation, following research and verified mode/orientation
-handling. Guided OBS streaming is included; direct in-app broadcasting, camera
+Studio now offers verified profile-based camera preparation and an option to
+keep the existing settings. Shooting orientation remains camera-controlled.
+Guided OBS streaming is included; direct in-app broadcasting, camera
 audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 
-## Latest research and user feedback (2026-10-04)
+## Reliability and camera preparation increment (2026-10-05)
+
+- User approved proceeding after research and offered device/USB diagnostics.
+  Implemented the first prioritized increment rather than speculative quality
+  negotiation. The installed upstream application remains untouched.
+- Shared camera mode writes now require readable mode/idle state, accepted
+  options and bounded actual readback. Present proto3 zero is distinguished
+  from missing/unsupported data. Dependent Standard color/filter resets only
+  follow a verified mode and another idle check. Accepted color writes are not
+  claimed as separate color readback verification.
+- Studio's visible **Match camera mode** toggle defaults on. Landscape and
+  upscaled Full HD select Slow-mo, matching the measured baseline; Portrait
+  selects Video. Already matching modes keep settings. The toggle off preserves
+  current mode/color/orientation. Native source dimensions/cadence and framing
+  mismatch guidance remain distinct from virtual output. Firmware-wide mode
+  suitability and orientation are not established by the existing measurement.
+- Preparation occurs once per explicit Start, not on every Wi-Fi reconnect.
+  Stop/disconnect cancels follow-up commands and output startup. It cannot undo
+  a camera command already sent. Shared busy state prevents concurrent capture
+  controls. Unsupported/ignored commands expose a useful manual-settings path.
+- Preview native operations share a serialized queue and cancellation version.
+  An elementary stream with no bytes at six seconds gets one restart; another
+  timeout requires user retry. The helper has a twenty-second first-frame
+  deadline with a structured error. Byte arrival is not proof of decoding.
+- HTTP preview readers reconnect twice and reset their decoder. Changed H.264
+  or HEVC headers/source lag invalidate cached references and close affected
+  clients for a clean join. Slow client lag also closes its connection. The
+  listener owns client tasks with JoinSet so teardown cancels blocked writers.
+  Navigation guards prevent a queued refresh reclaiming a Gallery-bound stream.
+- Studio's Whatnot guide now uses Show Tools/WebSocket/WHIP and fixed official
+  help links. No Whatnot broadcast, Guardian approval, native USB video or
+  camera-audio support is claimed.
+- Added **Export camera report** using known GET commands through the current
+  session, with credentials/identifiers omitted. Added a read-only Windows
+  PnP/USB/network/DirectShow inventory script and CI smoke test. Before/after
+  instructions are in [DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md).
+- Automated results: 333 unit tests and 51 Nuxt runtime tests; six Python
+  simulations with real dependency imports; native Rust tests and optimized
+  Linux build. Chromium simulated Start/Stop, mode preparation, manual setting
+  preservation and minimum 960×640 layout with no page errors or horizontal
+  overflow. This simulation did not receive the user's camera feed or publish
+  to a real OBS device. A synthetic paced HEVC loopback decode also passed.
+- New mode/recovery behavior and Windows diagnostics require the user's real
+  camera/PC pass; prior hardware successes below apply to the earlier builds.
+  Five cold starts, recording guard, all profiles, Stop during startup,
+  reconnect, USB before/after and a 60-minute soak are documented in setup.
+
+## Research and user feedback before this increment (2026-10-04)
 
 - The user rebuilt `bdf7157` on Windows. The uploaded transcript confirms bundled
   engine imports, optimized native compilation and local MSI/NSIS creation.
@@ -28,14 +75,14 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - Read [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) before implementing automation.
   Official Luna docs separate shooting orientation from mode, so test ordinary
   Video in landscape/portrait before universally forcing Slow-mo. The shared
-  mode switch currently ignores accepted-option results and does not reliably
-  verify actual mode; repair that and strict recording-status guards first.
+  mode switch at that point ignored accepted-option results and did not reliably
+  verify actual mode; those checks are repaired in the increment above.
 - Investigate accepted-but-silent preview recovery, the helper's unbounded
   first-frame wait, reader EOF/error recovery and incomplete GOP caching after
   source lag. The user's initial startup issue is not yet root-caused.
 - Whatnot's current official path is Show Tools + OBS WebSocket + WHIP with a
   1080×1920 canvas and per-show token. Setup docs now reflect it; Studio's generic
-  in-app guide still needs a dedicated update. No actual Whatnot show was tested.
+  in-app guide needed a dedicated update, now implemented. No actual Whatnot show was tested.
 - WGU acceptance of Luna/OBS is unestablished. Recommend a physical external USB
   webcam meeting WGU's microphone/placement requirements unless the institution
   and provider confirm this bridge. A native virtual camera or USB software
@@ -50,8 +97,8 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   streaming/transfer-aware keepalive fix. It has not been merged. Adapt/review it
   separately against our modified `luna.rs`; preserve development identity,
   disabled updates and upstream push protection. Upstream still has no license.
-- This follow-up changes research/setup/handoff documentation only. The working
-  camera protocol, app code and installed upstream application remain intact.
+- That research follow-up changed documentation only. The subsequent increment
+  above changes app/bridge code; the installed upstream application stays intact.
 
 ## Current Studio increment (2026-10-04)
 

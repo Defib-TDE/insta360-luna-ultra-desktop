@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import queue
 import sys
 import threading
@@ -49,6 +50,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Seconds without stream data before reconnecting",
     )
     parser.add_argument(
+        "--startup-timeout",
+        type=float,
+        default=20.0,
+        help="Maximum seconds to wait for the first decoded webcam frame",
+    )
+    parser.add_argument(
         "--probe-only",
         action="store_true",
         help="Decode frames and report source properties without opening a virtual camera",
@@ -62,8 +69,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if bool(args.width) != bool(args.height):
         parser.error("--width and --height must be supplied together")
-    if args.fps is not None and args.fps <= 0:
+    if args.fps is not None and (args.fps <= 0 or not math.isfinite(args.fps)):
         parser.error("--fps must be positive")
+    for name in ("startup_timeout", "read_timeout"):
+        if getattr(args, name) <= 0 or not math.isfinite(getattr(args, name)):
+            parser.error(f"--{name.replace('_', '-')} must be finite and positive")
     if args.probe_frames <= 0:
         parser.error("--probe-frames must be positive")
     return args
@@ -271,7 +281,13 @@ def run_virtual_camera(av: Any, args: argparse.Namespace) -> int:
 
     print(f"Waiting for decoded video from {args.url}...", file=sys.stderr)
     try:
-        first = latest.get()
+        try:
+            first = latest.get(timeout=args.startup_timeout)
+        except queue.Empty:
+            message = "No decoded video arrived before the startup deadline. Retry preview or reconnect the camera, then start webcam again."
+            print(message, file=sys.stderr)
+            emit_event(args, "error", message=message)
+            return 1
         backend = None if args.backend == "auto" else args.backend
         camera_options: dict[str, Any] = {
             "width": first.width,

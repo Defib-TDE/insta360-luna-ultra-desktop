@@ -26,6 +26,28 @@ class BridgeTests(unittest.TestCase):
         bridge.replace_latest(frames, second)
         self.assertIs(frames.get_nowait(), second)
 
+    def test_cli_rejects_unbounded_timeouts_and_rates(self):
+        for option in ["--startup-timeout", "--read-timeout", "--fps"]:
+            for value in ["0", "-1", "nan", "inf"]:
+                with self.subTest(option=option, value=value), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    bridge.parse_args([option, value])
+
+    def test_first_frame_deadline_releases_decoder_without_opening_a_camera(self):
+        stopped = threading.Event()
+        def decoder(_av, _numpy, _args, _output, stop):
+            stop.wait(1)
+            if stop.is_set():
+                stopped.set()
+        fake = SimpleNamespace(Camera=lambda **_: self.fail("Opened sink without decoded video"))
+        stdout = io.StringIO()
+        with patch.dict(sys.modules, {"numpy": SimpleNamespace(), "pyvirtualcam": fake}), patch.object(bridge, "decode_latest", decoder), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+            result = bridge.run_virtual_camera(None, bridge.parse_args(["--json-events", "--startup-timeout", "0.02"]))
+        self.assertEqual(result, 1)
+        self.assertTrue(stopped.is_set())
+        event = json.loads(stdout.getvalue())
+        self.assertEqual(event["event"], "error")
+        self.assertIn("startup deadline", event["message"])
+
     def test_source_events_are_not_container_fps_estimates(self):
         stop = threading.Event()
         frame = SimpleNamespace(width=640, height=480)

@@ -15,7 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, watch, Mutex};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::luna::{
     wire_field_varint, LunaState, Session, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM,
@@ -75,6 +75,7 @@ enum Codec {
 
 #[derive(Clone)]
 struct StreamPacket {
+    generation: u64,
     sequence: u64,
     keyframe: bool,
     data: Arc<[u8]>,
@@ -82,6 +83,7 @@ struct StreamPacket {
 
 #[derive(Default)]
 struct Bootstrap {
+    generation: u64,
     codec: Option<Codec>,
     parameter_sets: Vec<(u8, Vec<u8>)>,
     gop: Vec<Arc<[u8]>>,
@@ -90,12 +92,19 @@ struct Bootstrap {
 }
 
 struct BootstrapSnapshot {
+    generation: u64,
     through_sequence: u64,
     ready: bool,
     chunks: Vec<Arc<[u8]>>,
 }
 
 impl Bootstrap {
+    fn invalidate_gop(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.gop.clear();
+        self.gop_bytes = 0;
+    }
+
     fn ingest(&mut self, sequence: u64, payload: Arc<[u8]>) -> bool {
         self.through_sequence = sequence;
         let units = annexb_units(&payload);
@@ -105,6 +114,7 @@ impl Bootstrap {
         }
 
         let mut keyframe = false;
+        let mut headers_changed = false;
         if let Some(codec) = self.codec {
             for unit in units {
                 let Some(nal_type) = nal_type(unit, codec) else {
@@ -117,6 +127,7 @@ impl Bootstrap {
                         .iter_mut()
                         .find(|(saved_type, _)| *saved_type == nal_type)
                     {
+                        headers_changed |= *saved != bytes;
                         *saved = bytes;
                     } else {
                         self.parameter_sets.push((nal_type, bytes));
@@ -126,6 +137,9 @@ impl Bootstrap {
             }
         }
 
+        if headers_changed {
+            self.invalidate_gop();
+        }
         if keyframe {
             self.gop.clear();
             self.gop_bytes = 0;
@@ -149,6 +163,7 @@ impl Bootstrap {
             .collect();
         chunks.extend(self.gop.iter().cloned());
         BootstrapSnapshot {
+            generation: self.generation,
             through_sequence: self.through_sequence,
             ready: !self.gop.is_empty(),
             chunks,
@@ -299,8 +314,8 @@ async fn serve_client(
         return;
     }
 
-    let mut snapshot = bootstrap.lock().unwrap().snapshot();
-    let mut through_sequence = snapshot.through_sequence;
+    let snapshot = bootstrap.lock().unwrap().snapshot();
+    let through_sequence = snapshot.through_sequence;
     let mut ready = snapshot.ready;
     if write_bootstrap(&mut socket, &snapshot).await.is_err() {
         return;
@@ -311,6 +326,14 @@ async fn serve_client(
             _ = shutdown.changed() => break,
             received = receiver.recv() => match received {
                 Ok(packet) => {
+                    if packet.generation < snapshot.generation {
+                        continue;
+                    }
+                    // A lost encoded packet or new codec headers breaks this
+                    // decoder's history. Close so clients join a fresh bootstrap.
+                    if packet.generation != snapshot.generation {
+                        return;
+                    }
                     if packet.sequence <= through_sequence || (!ready && !packet.keyframe) {
                         continue;
                     }
@@ -321,14 +344,9 @@ async fn serve_client(
                         break;
                     }
                 }
-                Err(RecvError::Lagged(_)) => {
-                    snapshot = bootstrap.lock().unwrap().snapshot();
-                    through_sequence = snapshot.through_sequence;
-                    ready = snapshot.ready;
-                    if write_bootstrap(&mut socket, &snapshot).await.is_err() {
-                        break;
-                    }
-                }
+                // Replaying headers into a decoder with missing references
+                // is unreliable. A new HTTP connection gets a fresh decoder.
+                Err(RecvError::Lagged(_)) => break,
                 Err(RecvError::Closed) => break,
             }
         }
@@ -343,19 +361,25 @@ async fn serve(
     bootstrap: Arc<StdMutex<Bootstrap>>,
     mut shutdown: watch::Receiver<bool>,
 ) {
+    let mut clients = JoinSet::new();
     loop {
         let accepted = tokio::select! {
             _ = shutdown.changed() => break,
+            _ = clients.join_next(), if !clients.is_empty() => continue,
             accepted = listener.accept() => accepted,
         };
         let Ok((socket, _)) = accepted else { break };
-        tokio::spawn(serve_client(
+        clients.spawn(serve_client(
             socket,
             stream_tx.clone(),
             Arc::clone(&bootstrap),
             shutdown.clone(),
         ));
     }
+    // Also cancels clients blocked while writing to a slow consumer. JoinSet's
+    // drop aborts them if Running aborts this listener task during teardown.
+    clients.abort_all();
+    while clients.join_next().await.is_some() {}
 }
 
 async fn bind_listener() -> Result<TcpListener, String> {
@@ -428,17 +452,31 @@ pub async fn luna_liveview_start(
                     drop(first);
 
                     let data = Arc::<[u8]>::from(payload);
-                    let keyframe = pump_bootstrap
-                        .lock()
-                        .unwrap()
-                        .ingest(sequence, Arc::clone(&data));
+                    let (keyframe, generation) = {
+                        let mut bootstrap = pump_bootstrap.lock().unwrap();
+                        let keyframe = bootstrap.ingest(sequence, Arc::clone(&data));
+                        (keyframe, bootstrap.generation)
+                    };
                     let _ = pump_tx.send(StreamPacket {
+                        generation,
                         sequence,
                         keyframe,
                         data,
                     });
                 }
-                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Lagged(_)) => {
+                    let generation = {
+                        let mut bootstrap = pump_bootstrap.lock().unwrap();
+                        bootstrap.invalidate_gop();
+                        bootstrap.generation
+                    };
+                    let _ = pump_tx.send(StreamPacket {
+                        generation,
+                        sequence,
+                        keyframe: false,
+                        data: Arc::from([]),
+                    });
+                }
                 Err(RecvError::Closed) => break,
             }
         }
@@ -574,6 +612,76 @@ mod tests {
         assert_eq!(snapshot.chunks[2].last(), Some(&0x55));
     }
 
+    #[test]
+    fn changed_headers_discard_reference_frames_until_a_fresh_keyframe() {
+        let mut bootstrap = Bootstrap::default();
+        bootstrap.ingest(1, h264(7, 0x11));
+        bootstrap.ingest(2, h264(8, 0x22));
+        bootstrap.ingest(3, h264(5, 0x33));
+        bootstrap.ingest(4, h264(7, 0x66));
+        bootstrap.ingest(5, h264(1, 0x44));
+        let snapshot = bootstrap.snapshot();
+        assert_eq!(snapshot.generation, 1);
+        assert!(!snapshot.ready);
+        assert_eq!(snapshot.chunks.len(), 2);
+        assert_eq!(snapshot.chunks[0].last(), Some(&0x66));
+        bootstrap.ingest(6, h264(5, 0x55));
+        assert!(bootstrap.snapshot().ready);
+        assert_eq!(bootstrap.snapshot().chunks.len(), 3);
+    }
+
+    #[test]
+    fn hevc_bootstrap_retains_vps_sps_pps_and_waits_for_a_new_random_access_frame() {
+        let nal = |kind: u8, byte: u8| Arc::<[u8]>::from(vec![0, 0, 0, 1, kind << 1, 1, byte]);
+        let mut bootstrap = Bootstrap::default();
+        bootstrap.ingest(1, nal(32, 0x11));
+        bootstrap.ingest(2, nal(33, 0x22));
+        bootstrap.ingest(3, nal(34, 0x33));
+        bootstrap.ingest(4, nal(19, 0x44));
+        assert!(bootstrap.snapshot().ready);
+        assert_eq!(bootstrap.snapshot().chunks.len(), 4);
+        bootstrap.ingest(5, nal(33, 0x55));
+        assert!(!bootstrap.snapshot().ready);
+        assert_eq!(bootstrap.snapshot().generation, 1);
+        bootstrap.ingest(6, nal(1, 0x66));
+        assert!(!bootstrap.snapshot().ready);
+        bootstrap.ingest(7, nal(21, 0x77));
+        assert!(bootstrap.snapshot().ready);
+        assert_eq!(bootstrap.snapshot().chunks.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn invalidated_decoder_history_closes_existing_http_client() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stream_tx, _) = broadcast::channel(4);
+        let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let server = tokio::spawn(serve(listener, stream_tx.clone(), bootstrap, shutdown_rx));
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0u8; 256];
+        assert!(client.read(&mut response).await.unwrap() > 0);
+        assert!(stream_tx
+            .send(StreamPacket {
+                generation: 1,
+                sequence: 1,
+                keyframe: false,
+                data: Arc::from([]),
+            })
+            .is_ok());
+        let closed = tokio::time::timeout(Duration::from_secs(1), client.read(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(closed, 0);
+        shutdown.send(true).unwrap();
+        server.await.unwrap();
+    }
+
     #[tokio::test]
     async fn shutdown_closes_existing_http_client() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
@@ -597,6 +705,34 @@ mod tests {
         let closed = tokio::time::timeout(Duration::from_secs(1), client.read(&mut response))
             .await
             .expect("client socket stayed open after shutdown")
+            .unwrap();
+        assert_eq!(closed, 0);
+    }
+
+    #[tokio::test]
+    async fn aborting_listener_also_releases_its_client_tasks() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stream_tx, _) = broadcast::channel(4);
+        let (_shutdown, shutdown_rx) = watch::channel(false);
+        let server = tokio::spawn(serve(
+            listener,
+            stream_tx,
+            Arc::new(StdMutex::new(Bootstrap::default())),
+            shutdown_rx,
+        ));
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0u8; 256];
+        assert!(client.read(&mut response).await.unwrap() > 0);
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
+        let closed = tokio::time::timeout(Duration::from_secs(1), client.read(&mut response))
+            .await
+            .unwrap()
             .unwrap();
         assert_eq!(closed, 0);
     }

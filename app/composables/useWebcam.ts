@@ -23,6 +23,9 @@ export function useWebcam() {
   const profileId = useState<WebcamProfileId>("webcam-profile", () => preferences.value.profileId);
   const mirror = useState("webcam-mirror", () => preferences.value.mirror);
   const codec = useState<"hevc" | "h264">("webcam-codec", () => preferences.value.codec);
+  const matchCamera = useState("webcam-match-camera", () => preferences.value.matchCamera);
+  const preparing = useState("webcam-preparing-camera", () => false);
+  const cameraMode = useState<string | null>("webcam-camera-mode", () => null);
   const checking = useState("webcam-checking", () => false);
   const error = useState<string | null>("webcam-error", () => null);
   const profile = computed(() => webcamProfile(profileId.value));
@@ -85,6 +88,9 @@ export function useWebcam() {
     profile,
     mirror,
     codec,
+    matchCamera,
+    preparing,
+    cameraMode,
     checking,
     error,
     publishing,

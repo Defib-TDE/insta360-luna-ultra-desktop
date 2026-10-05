@@ -99,6 +99,7 @@ pub fn webcam_open_help(topic: &str) -> Result<(), String> {
     let url = match topic {
         "obs" => "https://obsproject.com/download",
         "python" => "https://www.python.org/downloads/windows/",
+        "whatnot" => "https://help.whatnot.com/hc/en-us/articles/5497980244749-Using-OBS-with-your-Livestream",
         _ => return Err("Unknown setup help topic.".into()),
     };
     if !cfg!(target_os = "windows") {
@@ -309,6 +310,10 @@ fn bridge_event(status: &Arc<StdMutex<WebcamStatus>>, line: &str) {
             status.reconnects += 1;
         }
         Some("stalled") => status.phase = "reconnecting".into(),
+        Some("error") => {
+            status.phase = "error".into();
+            status.error = event["message"].as_str().map(str::to_string);
+        }
         Some("resumed") if status.device.is_some() => status.phase = "publishing".into(),
         Some("source") => {
             status.source_width = event["width"].as_u64();
@@ -357,10 +362,23 @@ async fn supervise(
                 _ => logs_open = false,
             },
             result = child.wait() => {
+                // The process can exit before select! handles its last stdout
+                // event. Keep the specific startup error instead of losing it
+                // to a generic exit-code message. Bound inherited pipe waits.
+                let _ = tokio::time::timeout(std::time::Duration::from_millis(250), async {
+                    while let Ok(Some(line)) = events.next_line().await {
+                        bridge_event(&status, &line);
+                    }
+                    while let Ok(Some(line)) = logs.next_line().await {
+                        log_line(&status, line);
+                    }
+                }).await;
                 let mut status = status.lock().unwrap();
                 status.phase = "error".into();
-                status.error = Some(format!("Webcam output stopped ({}). Close any other OBS Virtual Camera publisher, check diagnostics, then start again.",
-                    result.map(|code| code.to_string()).unwrap_or_else(|error| error.to_string())));
+                if status.error.is_none() {
+                    status.error = Some(format!("Webcam output stopped ({}). Close any other OBS Virtual Camera publisher, check diagnostics, then start again.",
+                        result.map(|code| code.to_string()).unwrap_or_else(|error| error.to_string())));
+                }
                 break;
             }
         }
@@ -510,5 +528,17 @@ mod tests {
         assert_eq!(status.source_fps, Some(23.7));
         assert_eq!(status.output_fps, Some(30.0));
         assert_eq!(status.reconnects, 1);
+    }
+
+    #[test]
+    fn preserves_actionable_helper_startup_errors() {
+        let status = Arc::new(StdMutex::new(WebcamStatus::default()));
+        bridge_event(
+            &status,
+            r#"{"event":"error","message":"No decoded video arrived before the startup deadline."}"#,
+        );
+        let status = status.lock().unwrap();
+        assert_eq!(status.phase, "error");
+        assert!(status.error.as_ref().unwrap().contains("startup deadline"));
     }
 }

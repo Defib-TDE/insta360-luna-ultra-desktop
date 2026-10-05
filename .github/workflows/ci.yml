@@ -30,6 +30,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Native Windows tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Read-only Windows diagnostics smoke test
+        shell: pwsh
+        run: |
+          & './tools/inspect-windows-devices.ps1' -Label ci
+          $report = Get-ChildItem './probe-out/windows-devices-ci-*.json' | Select-Object -Last 1
+          $data = Get-Content $report.FullName -Raw | ConvertFrom-Json
+          if ($data.schemaVersion -ne 1 -or $data.label -ne 'ci') { throw 'Invalid Windows inventory report.' }
       - name: Package video engine and build Windows installers (no publication)
         run: bun run build
       - name: Verify embedded video engine launches

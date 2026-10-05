@@ -44,12 +44,18 @@ one-file so the app supervises the actual process, not an extraction child.
 
 1. Install OBS Studio from its official website if Studio reports a missing
    camera driver. Keep OBS's **Start Virtual Camera** publisher stopped.
-2. Join the Luna Wi-Fi network, keep the camera mode fixed, and select
+2. Join the Luna Wi-Fi network and select
    **Connect Luna**. Open **Studio**.
 3. Choose Landscape, Portrait or upscaled Full HD. Start with Landscape 720p30,
    the conservative general-purpose preset. Source dimensions and measured
    cadence appear once the decoder is running.
-4. Click **Start webcam**. Select **OBS Virtual Camera** in Chrome or Discord.
+4. Leave **Match camera mode** on to prepare the tested source mode, or turn it
+   off to **Keep my camera settings**. Landscape and Full HD currently select
+   **Slow-mo**; Portrait selects **Video**. These match the measured configuration,
+   not a universal firmware capability. Shooting orientation is still set on
+   the camera. Switching into Slow-mo also requests Standard color/no filter;
+   an already matching mode keeps its settings. The app never starts recording.
+   Click **Start webcam**. Select **OBS Virtual Camera** in Chrome or Discord.
    Navigation to Settings should not interrupt the output. Click **Stop webcam**
    to release the publisher. Closing Luna terminates its supervised helper.
    Clicking **Disconnect** also releases output; a Wi-Fi interruption preserves
@@ -82,16 +88,16 @@ Luna's 720×1280 portrait output can be scaled by OBS, but its native source det
 does not increase. Keep OBS's virtual-camera publisher stopped while Luna owns it.
 
 Availability and broadcast configuration can vary. Actual Whatnot broadcasting
-has not been tested here. Studio's current guide is generic; use the official
-instructions above for Whatnot. The app does not claim a show is live just because
+has not been tested here. Studio includes dedicated Show Tools guidance and a
+link to the official instructions. The app does not claim a show is live just because
 its local webcam is publishing. Direct in-app broadcasting and camera audio are
 later phases, not features in this build.
 
 ## Camera quality, portable networking and exams
 
-Full HD changes virtual-camera output size, not the current fixed preview
-request or camera mode. Automatic camera preparation and preview-resolution
-negotiation are planned; see [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) for evidence,
+Full HD scales the landscape source to virtual-camera output size. Mode matching
+is now implemented; native preview-resolution negotiation is still planned.
+See [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) for evidence,
 mode/orientation recommendations and the hardware test gates.
 
 On an MSI Claw or another single-Wi-Fi PC, plan **camera Wi-Fi + USB-C Ethernet
@@ -111,6 +117,15 @@ policy links are in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md#wgu--proctored-exams
 
 ## Acceptance pass on real hardware
 
+- Test a cold connection five times; record time to first picture and whether
+  the automatic preview retry helps. The initial startup problem is not yet
+  root-caused. A byte timeout is distinct from successful frame decoding.
+- Start each profile with mode matching on. Check the camera's actual mode and
+  orientation, source dimensions and measured cadence. Test matching off with
+  the original working mode. Full HD must remain labeled upscaled.
+- While recording on the camera, ask Studio to match a different mode: it must
+  refuse to write settings. Stop during startup: no later dependent writes or
+  publisher should start. A command already in flight may have reached Luna.
 - Start/stop three times; select the feed in Chrome and Discord.
 - Switch Studio → Settings → Camera → Studio while output runs.
 - Unplug/rejoin Wi-Fi; keep the consumer open. Check recovery and source metrics.
@@ -125,3 +140,24 @@ The source preview's dimensions and cadence depend on mode and firmware. 1080p
 is marked **upscaled**; it does not unlock extra camera detail. A 60fps virtual
 camera would repeat frames unless a higher-cadence source is actually measured.
 Existing probes do not establish the firmware's absolute preview maximum.
+
+## Startup recovery and diagnostics
+
+An elementary preview with no bytes after six seconds is stopped and restarted
+once. Another six seconds without bytes ends automatic startup retries and
+shows **Retry preview**. Camera connection remains separate. The webcam helper
+waits up to twenty seconds for its first decoded frame, then reports a useful
+error and releases its worker rather than waiting forever. After publication,
+the existing slate/reconnect behavior still handles temporary Wi-Fi loss.
+
+The preview reader retries an ended/broken HTTP stream twice, with a fresh
+decoder. Changed codec headers or lost encoded packets close affected relay
+clients so they can join the current headers and a clean keyframe. Stop also
+cancels accepted HTTP clients, including a blocked writer.
+
+In **Connection & diagnostics**, use **Export camera report** for acknowledged
+option types, mode/posture metadata and source/output measurements. It uses
+known GET commands through the current session and excludes device credentials.
+Read [DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md) for the Windows USB/network
+inventory script and before/after steps. These new changes are automated-tested;
+real Luna/Windows acceptance is still pending.

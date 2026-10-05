@@ -32,7 +32,8 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
    strong focus states and reduced-motion support.
 2. Present landscape 720p30, portrait 720p30, and upscaled 1080p30 presets.
    Preserve aspect ratio, offer mirroring, and show source versus output clearly.
-   Do not change camera mode automatically.
+   Initially kept camera mode fixed; the subsequent reliability increment now
+   offers explicit mode matching and a compatibility option to keep settings.
 3. Bundle a PyInstaller **one-directory** video engine in Windows builds, so
    end users do not need Python, Git, Bun, Rust or FFmpeg. Keep an explicit
    isolated Python setup as a development-build fallback. Detect the OBS
@@ -57,15 +58,14 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
 ## Next iterations
 
 - Follow the source-backed recommendations in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md).
-  The user now requests profile-based camera preparation. Verify accepted mode
-  writes and actual readback, recording guards, source orientation and bounded
-  recovery before enabling it. Preserve a fixed-mode compatibility option.
+  Profile-based camera preparation now verifies accepted mode writes and actual
+  readback, requires an idle response before changing settings and preserves a
+  fixed-mode compatibility option. Its new hardware acceptance pass is pending.
 - Test ordinary Video in both shooting orientations before making Slow-mo the
   default landscape mode. Investigate the preview request's resolution field
   with known-good fallback; native 1080p/60fps remain unverified.
-- Make startup recover from an acknowledged but silent preview and distinguish
-  connection, first bytes, first decoded frame and virtual-device publication.
-  Validate repeated cold starts, then Teams/Zoom, Whatnot and the hour-long soak.
+- Bounded silent-preview and first-frame recovery is implemented. Validate
+  repeated cold starts, then Teams/Zoom, Whatnot and the hour-long soak.
 - Preview the exact composed output; add rotate, crop-to-fill, framing guides
   and saved per-destination scenes after the native source orientation is
   checked against the camera display.
@@ -73,7 +73,7 @@ join camera Wi-Fi, connect, choose a profile, start webcam.
   installation on a clean machine without Python and side-by-side identity.
   Review bundled notices, signing, WebView2 provisioning and uninstall cleanup.
   Publish installers only after upstream licensing is resolved.
-- Guide Whatnot through its current Show Tools/OBS WebSocket/WHIP workflow and
+- Studio now guides Whatnot through Show Tools/OBS WebSocket/WHIP and a
   1080×1920 OBS canvas. Validate a real show; generic RTMP is not its assumed path.
 - Add generic direct RTMP only with explicit destination configuration, secure stream
   key storage, microphone capture, synchronization, encoder metrics and

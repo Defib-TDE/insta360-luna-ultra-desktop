@@ -7,6 +7,8 @@ export const WEBCAM_PROFILES = [
     height: 720,
     fps: 30,
     icon: "i-lucide-monitor",
+    cameraMode: "slowmo",
+    cameraModeLabel: "Slow-mo",
   },
   {
     id: "portrait",
@@ -16,6 +18,8 @@ export const WEBCAM_PROFILES = [
     height: 1280,
     fps: 30,
     icon: "i-lucide-smartphone",
+    cameraMode: "video",
+    cameraModeLabel: "Video",
   },
   {
     id: "fullhd",
@@ -25,6 +29,8 @@ export const WEBCAM_PROFILES = [
     height: 1080,
     fps: 30,
     icon: "i-lucide-expand",
+    cameraMode: "slowmo",
+    cameraModeLabel: "Slow-mo",
   },
 ] as const;
 
@@ -33,10 +39,16 @@ export type WebcamProfileId = (typeof WEBCAM_PROFILES)[number]["id"];
 export const WEBCAM_PREFERENCES_KEY = "luna-studio-preferences";
 
 export function readWebcamPreferences(saved: string | null) {
-  const defaults: { profileId: WebcamProfileId; mirror: boolean; codec: "hevc" | "h264" } = {
+  const defaults: {
+    profileId: WebcamProfileId;
+    mirror: boolean;
+    codec: "hevc" | "h264";
+    matchCamera: boolean;
+  } = {
     profileId: "landscape",
     mirror: false,
     codec: "hevc",
+    matchCamera: true,
   };
   try {
     const value = JSON.parse(saved ?? "{}");
@@ -45,6 +57,7 @@ export function readWebcamPreferences(saved: string | null) {
       profileId: webcamProfile(value.profileId).id,
       mirror: value.mirror === true,
       codec: value.codec === "h264" ? ("h264" as const) : ("hevc" as const),
+      matchCamera: value.matchCamera !== false,
     };
   } catch {
     return defaults;

@@ -99,8 +99,20 @@ export async function readDeviceOption(optionType: string): Promise<ProtoObject>
   return (decoded.value as ProtoObject | undefined) ?? {};
 }
 
-export const readDeviceOptions = (): Promise<ProtoObject> =>
-  readBatched(CODE_GET_OPTIONS, MSG.GetOptions, MSG.GetOptionsResp, OPTION_TYPE, {});
+export async function readDeviceOptions(): Promise<ProtoObject> {
+  const options = await readBatched(
+    CODE_GET_OPTIONS,
+    MSG.GetOptions,
+    MSG.GetOptionsResp,
+    OPTION_TYPE,
+    {},
+  );
+  const supported = options.$supported as string[];
+  // Proto3 omits enum zero. Only acknowledged options have a valid default.
+  if (supported.includes("VIDEO_SUB_MODE")) options.video_sub_mode ??= "VIDEO_NORMAL";
+  if (supported.includes("PHOTO_SUB_MODE")) options.photo_sub_mode ??= "PHOTO_SINGLE";
+  return options;
+}
 
 /**
  * Write a patch. The camera answers with the option types it accepted, which

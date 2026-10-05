@@ -4,7 +4,8 @@ import type { VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeFakeTransport } from "../helpers/fakeTransport";
 import { resetCameraTransport, setCameraTransport } from "~/utils/transport";
-import { initialWebcamStatus } from "~/utils/webcamProfiles";
+import { initialWebcamStatus, WEBCAM_PREFERENCES_KEY } from "~/utils/webcamProfiles";
+import { MSG, encodeMessage } from "~/utils/lunaProto";
 import { resetWebcamClient, setWebcamClient, type WebcamClient } from "~/utils/webcamClient";
 import type { WebcamStatus } from "~/types/webcam";
 
@@ -24,6 +25,7 @@ describe("Studio session ownership", () => {
 
   beforeEach(async () => {
     localStorage.clear();
+    localStorage.setItem(WEBCAM_PREFERENCES_KEY, JSON.stringify({ matchCamera: false }));
     clearNuxtState(undefined, { reset: true });
     routing.route = reactive({ path: "/studio" });
     status = initialWebcamStatus();
@@ -165,5 +167,63 @@ describe("Studio session ownership", () => {
     await vi.waitFor(() => expect(vm.webcam.error.value).toContain("OBS camera is busy"));
     expect(vm.webcam.wanted.value).toBe(false);
     expect(client.start).toHaveBeenCalledOnce();
+  });
+
+  it("prepares a verified mode once and preserves it across Wi-Fi recovery", async () => {
+    vm.webcam.matchCamera.value = true;
+    transport.command = vi.fn(async (code) => {
+      expect(code).toBe(8);
+      return encodeMessage(MSG.GetOptionsResp, {
+        option_types: ["VIDEO_SUB_MODE", "PHOTO_SUB_MODE"],
+        value: { video_sub_mode: "VIDEO_SLOW_MOTION", photo_sub_mode: "PHOTO_NONE" },
+      });
+    });
+    await connectAndStart();
+    expect(vm.webcam.cameraMode.value).toBe("Slow-mo");
+    expect(transport.command).toHaveBeenCalledOnce();
+    vm.camera.status.value = "disconnected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(false));
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    expect(transport.command).toHaveBeenCalledOnce();
+  });
+
+  it("cancels startup during a pending camera read without applying a mode or starting output", async () => {
+    vm.webcam.matchCamera.value = true;
+    let finish!: (bytes: Uint8Array) => void;
+    transport.command = vi.fn(
+      () =>
+        new Promise<Uint8Array>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vm.camera.wantConnection.value = true;
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    vm.webcam.start();
+    await vi.waitFor(() => expect(vm.webcam.preparing.value).toBe(true));
+    await vi.waitFor(() => expect(transport.command).toHaveBeenCalledOnce());
+    vm.webcam.stop();
+    finish(encodeMessage(MSG.GetOptionsResp, { value: { video_sub_mode: "VIDEO_NORMAL" } }));
+    await vi.waitFor(() => expect(vm.webcam.preparing.value).toBe(false));
+    expect(transport.command).toHaveBeenCalledOnce();
+    expect(client.start).not.toHaveBeenCalled();
+    expect(vm.webcam.error.value).toBeNull();
+  });
+
+  it("shows an unsupported mode read once, then lets the user keep camera settings", async () => {
+    vm.webcam.matchCamera.value = true;
+    vm.camera.wantConnection.value = true;
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    vm.webcam.start();
+    await vi.waitFor(() => expect(vm.webcam.wanted.value).toBe(false));
+    expect(vm.webcam.error.value).toContain("Cannot read the current camera mode");
+    expect(transport.command).toHaveBeenCalledOnce();
+    expect(client.start).not.toHaveBeenCalled();
+    vm.webcam.matchCamera.value = false;
+    vm.webcam.start();
+    await vi.waitFor(() => expect(client.start).toHaveBeenCalledOnce());
+    expect(transport.command).toHaveBeenCalledOnce();
   });
 });

@@ -43,11 +43,13 @@ export function resetWebcamClient() {
   client = defaultClient;
 }
 
-export async function openStudioHelp(topic: "obs" | "python") {
+export async function openStudioHelp(topic: "obs" | "python" | "whatnot") {
   if (isTauri()) return invoke<void>("webcam_open_help", { topic });
-  const url =
-    topic === "obs"
-      ? "https://obsproject.com/download"
-      : "https://www.python.org/downloads/windows/";
+  const url = {
+    obs: "https://obsproject.com/download",
+    python: "https://www.python.org/downloads/windows/",
+    whatnot:
+      "https://help.whatnot.com/hc/en-us/articles/5497980244749-Using-OBS-with-your-Livestream",
+  }[topic];
   window.open(url, "_blank", "noopener,noreferrer");
 }

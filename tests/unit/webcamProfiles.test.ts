@@ -25,13 +25,16 @@ describe("webcam profiles", () => {
       profileId: "portrait",
       mirror: true,
       codec: "h264",
+      matchCamera: true,
     });
     expect(readWebcamPreferences('{"profileId":"8k","mirror":"true","codec":"unknown"}')).toEqual({
       profileId: "landscape",
       mirror: false,
       codec: "hevc",
+      matchCamera: true,
     });
     expect(readWebcamPreferences("null").profileId).toBe("landscape");
     expect(readWebcamPreferences("bad JSON").profileId).toBe("landscape");
+    expect(readWebcamPreferences('{"matchCamera":false}').matchCamera).toBe(false);
   });
 });

@@ -29,6 +29,7 @@ export interface WriteStatus {
 
 export function useCameraSettings() {
   const { isConnected } = useCamera();
+  const preparingCamera = useState("webcam-preparing-camera", () => false);
 
   const settings = useState<ProtoObject>("camera-settings", () => ({}));
   const device = useState<ProtoObject>("camera-device-options", () => ({}));
@@ -103,6 +104,10 @@ export function useCameraSettings() {
     patch: ProtoObject,
     verify: { option: string; field: string },
   ) {
+    if (preparingCamera.value) {
+      error.value = "Wait for camera mode preparation to finish.";
+      return;
+    }
     const { option, field } = verify;
     const previous = { ...settings.value };
     settings.value = { ...settings.value, ...patch };
@@ -214,6 +219,7 @@ export function useCameraSettings() {
    * and an error banner that flickers during a gesture is noise, not news.
    */
   async function nudgeZoom(scale: number) {
+    if (preparingCamera.value) return;
     settings.value = { ...settings.value, zoom_scale: scale };
     try {
       await writePhotographyOptions(mode.value, ["ZOOM_SCALE"], { zoom_scale: scale });
@@ -267,6 +273,10 @@ export function useCameraSettings() {
 
   /** The same write-then-verify cycle, for options that live on the device. */
   async function updateDevice(optionType: string, field: string, value: ProtoValue) {
+    if (preparingCamera.value) {
+      error.value = "Wait for camera mode preparation to finish.";
+      return;
+    }
     const previous = device.value[field];
     device.value = { ...device.value, [field]: value };
     saving.value = field;
