@@ -18,7 +18,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::diagnostics::{DiagnosticEvent, EventLog};
+use crate::diagnostics::{BuildIdentity, DiagnosticEvent, EventLog};
 
 const UCD2_MAGIC: &[u8; 4] = b"UCD2";
 const UCD2_VERSION: u8 = 0x01;
@@ -391,6 +391,10 @@ impl Drop for PendingRequest<'_> {
 }
 
 impl Session {
+    pub(crate) fn receiving_control(&self) -> bool {
+        self.health.recently_received()
+    }
+
     fn next_seq(&self) -> u8 {
         self.seq.fetch_add(1, Ordering::Relaxed)
     }
@@ -768,6 +772,7 @@ pub async fn luna_status(state: State<'_, LunaState>) -> Result<Option<LunaDevic
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionDiagnostics {
+    build: BuildIdentity,
     connected: bool,
     last_receive_age_seconds: Option<f64>,
     last_video_age_seconds: Option<f64>,
@@ -781,6 +786,7 @@ pub async fn luna_connection_diagnostics(
 ) -> Result<ConnectionDiagnostics, String> {
     let session = state.session().await;
     Ok(ConnectionDiagnostics {
+        build: BuildIdentity::current(),
         connected: session
             .as_ref()
             .is_some_and(|s| !s.health.closed.load(Ordering::Relaxed)),
@@ -875,7 +881,7 @@ pub async fn luna_command(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn hex(s: &str) -> Vec<u8> {
@@ -1038,29 +1044,61 @@ mod tests {
         ));
     }
 
-    async fn test_session() -> (Arc<Session>, TcpStream) {
+    pub(crate) async fn test_session() -> (Arc<Session>, TcpStream) {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
             .await
             .unwrap();
         let address = listener.local_addr().unwrap();
         let (client, accepted) = tokio::join!(TcpStream::connect(address), listener.accept());
-        let (_, writer) = client.unwrap().into_split();
+        let (mut reader, writer) = client.unwrap().into_split();
         let (stream_tx, _) = broadcast::channel(8);
-        (
-            Arc::new(Session {
-                writer: Mutex::new(writer),
-                pending: Arc::default(),
-                seq: AtomicU8::new(1),
-                request_id: AtomicU16::new(1),
-                reader: StdMutex::new(None),
-                keepalive: StdMutex::new(None),
-                info: StdMutex::new(LunaDeviceInfo::default()),
-                stream_tx,
-                health: Arc::new(SessionHealth::default()),
-                events: Arc::default(),
-            }),
-            accepted.unwrap().0,
-        )
+        let session = Arc::new(Session {
+            writer: Mutex::new(writer),
+            pending: Arc::default(),
+            seq: AtomicU8::new(1),
+            request_id: AtomicU16::new(1),
+            reader: StdMutex::new(None),
+            keepalive: StdMutex::new(None),
+            info: StdMutex::new(LunaDeviceInfo::default()),
+            stream_tx,
+            health: Arc::new(SessionHealth::default()),
+            events: Arc::default(),
+        });
+        let pending = Arc::clone(&session.pending);
+        let health = Arc::clone(&session.health);
+        let receiver = tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            let mut chunk = [0; 4096];
+            while let Ok(count) = reader.read(&mut chunk).await {
+                if count == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..count]);
+                for frame in drain_frames(&mut buffer) {
+                    *health.last_received.lock().unwrap() = Instant::now();
+                    if let Frame::File(reply) = frame {
+                        if let Some(sender) = pending.lock().unwrap().remove(&reply.request_id) {
+                            let _ = sender.send(reply);
+                        }
+                    }
+                }
+            }
+        });
+        session.reader.lock().unwrap().replace(receiver);
+        (session, accepted.unwrap().0)
+    }
+
+    pub(crate) fn test_reply(request: &[u8]) -> Vec<u8> {
+        let mut reply = build_file_command(
+            request[7],
+            u16::from_le_bytes([request[12], request[13]]),
+            u16::from_le_bytes([request[15], request[16]]),
+            &[],
+        );
+        reply[14] = 3;
+        reply.truncate(reply.len() - 4);
+        reply.extend_from_slice(&insta360_checksum(&reply).to_le_bytes());
+        reply
     }
 
     #[tokio::test]

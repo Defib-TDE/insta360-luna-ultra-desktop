@@ -15,6 +15,41 @@ Guided OBS streaming is included; direct in-app broadcasting, camera
 audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 
+## Screen-wake interruption (2026-10-05)
+
+- User reports Wi-Fi remained joined, the camera display was dark, and only a
+  physical tap that woke the display restored video. New report records four
+  decoder read timeouts from 10:41:16 to recovery at 10:41:51 p.m. EDT, no
+  control reconnect, zero command timeouts/backlog/header changes, baseline,
+  Slow-mo, HEVC 1280×720 and 1920×1080/30 output. Measured decode cadence is null
+  in this sample. Report was taken after recovery, not during the pause.
+- Report retains the older “accepted” native/frontend wording, so it appears
+  to come from an executable predating `3fac72b`, even if Git was updated.
+  Build identity is now included in both report types and native diagnostics;
+  Studio also shows its frontend revision. Raw uploads remain outside Git.
+- Official documentation distinguishes Auto Power Off (Never available) and
+  Screen Auto Sleep (duration choices unspecified). Recording with the screen
+  off is documented; our Wi-Fi preview behavior and a remote wake setter are
+  unverified. Never write the schema's standby option assuming it controls this.
+- Added native video-silence recovery on the existing session: after 12 seconds
+  without video, responsive control permits two preview Stop/Start attempts,
+  spaced at least 30 seconds apart. Listener/URL, profile and camera mode are
+  preserved; decoder history is invalidated for a fresh keyframe. After two
+  attempts the relay stays available for manual wake. A brief packet burst does
+  not replenish the budget; 30 seconds of continued video does. Stop cancels
+  the watchdog. Startup and control reconnection retain their existing owners.
+- A TCP simulation verifies the Stop/Start sequence, stale client closure and
+  stable HTTP listener. Policy tests cover retry exhaustion, cooldown, sustained
+  reset and dead-control deferral. Actual screen-sleep recovery is not tested.
+  Compare fixed-baseline runs with Auto Power Off set to Never and Screen Auto
+  Sleep disabled if available, otherwise longest duration. Record settings and
+  capture connection reports during a pause and after wake before app exit.
+  See [DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md#screen-sleep-and-video-only-pauses).
+- Local validation passed 338 unit, 62 Nuxt and 35 native tests, typecheck,
+  lint, app/docs generation (zero docs link errors), optimized native build and
+  the critical dependency audit. Nine lower-severity JavaScript findings remain
+  in the existing baseline. Windows packaging validation is pending.
+
 ## Hardware source-profile follow-up (2026-10-05)
 
 - User tried 1080p30/60 and 4K30/60 and reports all kept playing at approximately

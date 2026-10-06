@@ -5,6 +5,7 @@ import { getCameraTransport } from "~/utils/transport";
 import type { WebcamStatus } from "~/types/webcam";
 
 const DEVICE_FIELDS = [
+  "standby_duration",
   "video_sub_mode",
   "photo_sub_mode",
   "camera_posture",
@@ -22,6 +23,12 @@ const DEVICE_FIELDS = [
   "wifi_working_status",
 ];
 
+export interface AppBuild {
+  version: string;
+  commit: string;
+  channel: string;
+}
+
 /** Only existing GET commands through the established session; no code sweep. */
 export async function collectCameraReport(
   identity: { deviceName?: string; firmware?: string },
@@ -35,6 +42,7 @@ export async function collectCameraReport(
     outputFps: number;
     requestedProfile?: import("~/utils/previewProfiles").PreviewProfileId;
   },
+  appBuild?: AppBuild,
 ) {
   const current = await readCameraMode();
   const device = await readDeviceOptions();
@@ -44,6 +52,7 @@ export async function collectCameraReport(
   return {
     schemaVersion: 1,
     collectedAt: new Date().toISOString(),
+    appBuild,
     deviceName: identity.deviceName,
     firmware: identity.firmware,
     scope:
@@ -71,6 +80,7 @@ export async function collectConnectionReport(
   webcam: WebcamStatus,
   previewNotes: string[],
   firmware?: string,
+  appBuild?: AppBuild,
 ) {
   const transport = getCameraTransport();
   const [connection, relay] = await Promise.all([
@@ -80,6 +90,7 @@ export async function collectConnectionReport(
   return {
     schemaVersion: 1,
     collectedAt: new Date().toISOString(),
+    appBuild,
     scope:
       "Local connection, relay and decoder diagnostics. No camera commands, device identifiers or Wi-Fi credentials. Relay recovery counters cover this app process; command timeouts cover the current control session.",
     firmware,

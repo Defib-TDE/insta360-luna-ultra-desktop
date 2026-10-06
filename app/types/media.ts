@@ -61,6 +61,7 @@ export interface LiveViewStats {
   clientLaggedPackets?: number;
   headerChanges?: number;
   clientConnections?: number;
+  stallRestarts?: number;
   lastPacketAgeSeconds?: number | null;
   events?: DiagnosticEvent[];
   requestedProfile?: import("~/utils/previewProfiles").PreviewProfileId | null;
@@ -72,6 +73,7 @@ export interface DiagnosticEvent {
 }
 
 export interface ConnectionDiagnostics {
+  build?: { version: string; commit: string; profile: string };
   connected: boolean;
   lastReceiveAgeSeconds: number | null;
   lastVideoAgeSeconds: number | null;

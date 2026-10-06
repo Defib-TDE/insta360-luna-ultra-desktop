@@ -101,6 +101,40 @@ run. Compare two reports before and after an interruption. Successful automatic
 recovery does not establish sustained reliability or distinguish firmware from
 radio/decoder faults without these events.
 
+### Screen sleep and video-only pauses
+
+On 2026-10-05 the user observed a dark Luna screen, retained Wi-Fi, and a preview
+that returned only after tapping the screen awake. The report contains four
+decoder read retries over about 35 seconds and no control-session reconnect.
+There is no logged source/client backlog or codec-header change. It was collected
+after recovery, so its fresh arrival ages do not describe the pause itself.
+This points to a camera display/power interaction but does not prove its mechanism.
+
+The [official Luna settings guide](https://onlinemanual.insta360.com/lunaultra/en-us/operation-tutorials/system-operation/auto-power-off)
+documents **Settings → General → Auto Power Off → Never** and a separate
+**Screen Auto Sleep** duration. It promises recording with the screen off,
+not uninterrupted control-session Wi-Fi preview. For comparison, disable screen
+sleep if the camera offers that choice, or select its longest duration. Keep
+Slow-mo, baseline and output fixed; compare normal sleep with this temporary
+setting for 10–15 minutes each. Record original settings so they can be restored.
+Do not infer a remote wake setter or the meaning of raw `standby_duration` from
+the shared schema; this unit's report did not acknowledge that option.
+
+Native recovery now monitors a previously running source for 12 seconds of
+silence. With responsive control it tries at most two Stop/Start preview cycles,
+at least 30 seconds apart, preserving the relay URL, source profile and camera
+mode. It closes clients with stale GOP references so they rejoin at a fresh
+keyframe. It leaves the relay open after the budget is exhausted, permitting
+manual screen wake. Thirty seconds of continued video arrival restores the
+budget; an isolated header burst does not. This has been simulated; its ability
+to recover this camera's sleep pause remains a hardware test.
+
+Reports include `appBuild` and native `connection.build`, plus relay
+`stallRestarts`. Studio and Settings show the frontend revision. These distinguish
+an old executable from a newly pulled source checkout. The uploaded report still
+used pre-`3fac72b` “accepted” log wording and had no newer attempt-end summaries,
+so rebuild and launch the intended Dev executable before comparing results.
+
 ## Exam use
 
 These tools do not establish WGU or Guardian approval. Use a physical external

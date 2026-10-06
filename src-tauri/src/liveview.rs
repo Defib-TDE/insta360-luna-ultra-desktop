@@ -29,6 +29,10 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const PREFERRED_PORT: u16 = 49_183;
 /// Never retain an unbounded GOP if a camera stops producing keyframes.
 const MAX_BOOTSTRAP_BYTES: usize = 16 * 1024 * 1024;
+const VIDEO_SILENCE: Duration = Duration::from_secs(12);
+const STALL_RETRY_COOLDOWN: Duration = Duration::from_secs(30);
+const HEALTHY_RESET: Duration = Duration::from_secs(30);
+const MAX_STALL_RESTARTS: u8 = 2;
 
 /// StartLiveStream, per `insta360.messages.StartLiveStream`:
 ///   2 enableVideo, 6 videoBitrate, 7 resolution, 8 enableGyro,
@@ -94,6 +98,68 @@ struct Stats {
     packets: AtomicU64,
     first_bytes: StdMutex<Vec<u8>>,
     started: StdMutex<Option<Instant>>,
+    last_packet: StdMutex<Option<Instant>>,
+}
+
+#[derive(Debug, PartialEq)]
+enum StallAction {
+    None,
+    Restart(u8),
+    BytesResumed,
+    NeedsWake,
+}
+
+/// A few header packets after a restart must not buy an unlimited retry loop.
+#[derive(Default)]
+struct StallWatch {
+    silent: bool,
+    attempts: u8,
+    last_attempt: Option<Instant>,
+    healthy_since: Option<Instant>,
+    wake_noted: bool,
+}
+
+impl StallWatch {
+    fn observe(&mut self, now: Instant, last_packet: Instant, control_alive: bool) -> StallAction {
+        if now.duration_since(last_packet) < VIDEO_SILENCE {
+            if self.silent {
+                self.silent = false;
+                self.healthy_since = Some(now);
+                return StallAction::BytesResumed;
+            }
+            if self
+                .healthy_since
+                .is_some_and(|at| now.duration_since(at) >= HEALTHY_RESET)
+            {
+                self.attempts = 0;
+                self.last_attempt = None;
+                self.wake_noted = false;
+            }
+            return StallAction::None;
+        }
+        self.healthy_since = None;
+        if !control_alive {
+            // Connection recovery owns a dead control session.
+            return StallAction::None;
+        }
+        self.silent = true;
+        if self
+            .last_attempt
+            .is_some_and(|at| now.duration_since(at) < STALL_RETRY_COOLDOWN)
+        {
+            return StallAction::None;
+        }
+        if self.attempts == MAX_STALL_RESTARTS {
+            if !self.wake_noted {
+                self.wake_noted = true;
+                return StallAction::NeedsWake;
+            }
+            return StallAction::None;
+        }
+        self.attempts += 1;
+        self.last_attempt = Some(now);
+        StallAction::Restart(self.attempts)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -282,6 +348,7 @@ struct RelayDiagnostics {
     client_lagged_packets: AtomicU64,
     header_changes: AtomicU64,
     client_connections: AtomicU64,
+    stall_restarts: AtomicU64,
     last_packet: StdMutex<Option<Instant>>,
     events: EventLog,
 }
@@ -294,6 +361,7 @@ struct Running {
     shutdown: watch::Sender<bool>,
     server: JoinHandle<()>,
     pump: JoinHandle<()>,
+    watchdog: JoinHandle<()>,
     diagnostics: Arc<RelayDiagnostics>,
 }
 
@@ -310,6 +378,7 @@ impl Drop for Running {
         let _ = self.shutdown.send(true);
         self.server.abort();
         self.pump.abort();
+        self.watchdog.abort();
         let seconds = self
             .stats
             .started
@@ -346,6 +415,7 @@ pub struct LiveViewStats {
     pub client_lagged_packets: u64,
     pub header_changes: u64,
     pub client_connections: u64,
+    pub stall_restarts: u64,
     pub last_packet_age_seconds: Option<f64>,
     pub events: Vec<DiagnosticEvent>,
     pub requested_profile: Option<PreviewProfile>,
@@ -469,6 +539,66 @@ async fn bind_listener() -> Result<TcpListener, String> {
     }
 }
 
+async fn watch_video_stalls(
+    session: Weak<Session>,
+    profile: PreviewProfile,
+    stats: Arc<Stats>,
+    bootstrap: Arc<StdMutex<Bootstrap>>,
+    stream_tx: broadcast::Sender<StreamPacket>,
+    diagnostics: Arc<RelayDiagnostics>,
+) {
+    let mut watch = StallWatch::default();
+    let mut ticker = tokio::time::interval(Duration::from_secs(2));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        let Some(session) = session.upgrade() else {
+            break;
+        };
+        let Some(last_packet) = *stats.last_packet.lock().unwrap() else {
+            // The existing startup watchdog handles a stream that never began.
+            continue;
+        };
+        let now = Instant::now();
+        match watch.observe(now, last_packet, session.receiving_control()) {
+            StallAction::None => {},
+            StallAction::BytesResumed => diagnostics.events.note(
+                "Camera video bytes resumed after a pause; decoded output still needs verification."
+            ),
+            StallAction::NeedsWake => diagnostics.events.note(
+                "Video remains silent after two bounded preview restarts. Keeping the relay available for manual wake. Wake Luna's screen and check General > Screen Auto Sleep and Auto Power Off."
+            ),
+            StallAction::Restart(attempt) => {
+                diagnostics.stall_restarts.fetch_add(1, Ordering::Relaxed);
+                diagnostics.events.note(format!(
+                    "Video silent for {:.1}s while control is responsive; preview restart {attempt}/{MAX_STALL_RESTARTS} using {profile:?}. Camera mode and power settings stay fixed.",
+                    now.duration_since(last_packet).as_secs_f64()
+                ));
+                if let Err(error) = session.send_command(CODE_STOP_LIVE_STREAM, &[], COMMAND_TIMEOUT).await {
+                    diagnostics.events.note(format!("Stalled-preview stop command failed: {error}"));
+                    continue;
+                }
+                // Close decoders with stale references; new joins wait for a
+                // fresh keyframe. Keep the listener and its URL intact.
+                let (generation, sequence) = {
+                    let mut saved = bootstrap.lock().unwrap();
+                    saved.invalidate_gop();
+                    (saved.generation, saved.through_sequence)
+                };
+                let _ = stream_tx.send(StreamPacket {
+                    generation, sequence, keyframe: false, data: Arc::from([]),
+                });
+                match session.send_command(CODE_START_LIVE_STREAM, &build_start_live_stream_body(profile), COMMAND_TIMEOUT).await {
+                    Ok(reply) => diagnostics.events.note(format!(
+                        "Stalled-preview restart received a {}; waiting for camera video. This is not proof of remote screen wake.", reply.diagnostic_summary()
+                    )),
+                    Err(error) => diagnostics.events.note(format!("Stalled-preview start command failed: {error}")),
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn luna_liveview_start(
     luna: State<'_, LunaState>,
@@ -521,6 +651,7 @@ pub async fn luna_liveview_start(
             match camera_rx.recv().await {
                 Ok(payload) => {
                     *pump_diagnostics.last_packet.lock().unwrap() = Some(Instant::now());
+                    *pump_stats.last_packet.lock().unwrap() = Some(Instant::now());
                     sequence = sequence.wrapping_add(1);
                     pump_stats
                         .bytes
@@ -580,6 +711,14 @@ pub async fn luna_liveview_start(
         let _ = pump_shutdown.send(true);
     });
 
+    let watchdog = tokio::spawn(watch_video_stalls(
+        Arc::downgrade(&session),
+        profile,
+        Arc::clone(&stats),
+        Arc::clone(&bootstrap),
+        stream_tx.clone(),
+        Arc::clone(&live.diagnostics),
+    ));
     let server = tokio::spawn(serve(
         listener,
         stream_tx,
@@ -595,6 +734,7 @@ pub async fn luna_liveview_start(
         shutdown,
         server,
         pump,
+        watchdog,
         diagnostics: Arc::clone(&live.diagnostics),
     };
 
@@ -612,7 +752,9 @@ pub async fn luna_liveview_start(
     {
         Ok(reply) => reply,
         Err(error) => {
-            live.diagnostics.events.note(format!("Camera preview request {profile:?} received no usable command reply: {error}"));
+            live.diagnostics.events.note(format!(
+                "Camera preview request {profile:?} received no usable command reply: {error}"
+            ));
             drop(running);
             return Err(format!("START_LIVE_STREAM command failed: {error}"));
         }
@@ -654,6 +796,7 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
         client_lagged_packets: diagnostics.client_lagged_packets.load(Ordering::Relaxed),
         header_changes: diagnostics.header_changes.load(Ordering::Relaxed),
         client_connections: diagnostics.client_connections.load(Ordering::Relaxed),
+        stall_restarts: diagnostics.stall_restarts.load(Ordering::Relaxed),
         last_packet_age_seconds: diagnostics
             .last_packet
             .lock()
@@ -686,6 +829,166 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stalled_video_retries_are_bounded_and_do_not_replace_control_recovery() {
+        let start = Instant::now();
+        let mut watch = StallWatch::default();
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(11), start, true),
+            StallAction::None
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(12), start, false),
+            StallAction::None
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(12), start, true),
+            StallAction::Restart(1)
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(41), start, true),
+            StallAction::None
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(42), start, true),
+            StallAction::Restart(2)
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(72), start, true),
+            StallAction::NeedsWake
+        );
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(3600), start, true),
+            StallAction::None
+        );
+        let resumed = start + Duration::from_secs(3601);
+        assert_eq!(
+            watch.observe(resumed, resumed, true),
+            StallAction::BytesResumed
+        );
+    }
+
+    #[test]
+    fn brief_header_bursts_do_not_reset_the_restart_budget() {
+        let start = Instant::now();
+        let mut watch = StallWatch::default();
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(12), start, true),
+            StallAction::Restart(1)
+        );
+        let burst = start + Duration::from_secs(13);
+        assert_eq!(watch.observe(burst, burst, true), StallAction::BytesResumed);
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(42), burst, true),
+            StallAction::Restart(2)
+        );
+        let burst = start + Duration::from_secs(43);
+        assert_eq!(watch.observe(burst, burst, true), StallAction::BytesResumed);
+        assert_eq!(
+            watch.observe(start + Duration::from_secs(72), burst, true),
+            StallAction::NeedsWake
+        );
+        let resumed = start + Duration::from_secs(73);
+        assert_eq!(
+            watch.observe(resumed, resumed, true),
+            StallAction::BytesResumed
+        );
+        for elapsed in 74..=103 {
+            let now = start + Duration::from_secs(elapsed);
+            assert_eq!(watch.observe(now, now, true), StallAction::None);
+        }
+        assert_eq!(
+            watch.observe(
+                start + Duration::from_secs(115),
+                start + Duration::from_secs(103),
+                true
+            ),
+            StallAction::Restart(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn silent_video_restarts_over_the_same_control_session_and_preserves_the_http_listener() {
+        let (session, mut camera) = crate::luna::tests::test_session().await;
+        let peer = tokio::spawn(async move {
+            for expected in [CODE_STOP_LIVE_STREAM, CODE_START_LIVE_STREAM] {
+                let mut head = [0; 12];
+                camera.read_exact(&mut head).await.unwrap();
+                let len = u32::from_le_bytes(head[8..12].try_into().unwrap()) as usize;
+                let mut request = head.to_vec();
+                request.resize(12 + len + 4, 0);
+                camera.read_exact(&mut request[12..]).await.unwrap();
+                assert_eq!(u16::from_le_bytes([request[12], request[13]]), expected);
+                if expected == CODE_START_LIVE_STREAM {
+                    assert_eq!(
+                        &request[21..request.len() - 4],
+                        build_start_live_stream_body(PreviewProfile::Baseline)
+                    );
+                }
+                camera
+                    .write_all(&crate::luna::tests::test_reply(&request))
+                    .await
+                    .unwrap();
+            }
+            camera
+        });
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stream_tx, _) = broadcast::channel(8);
+        let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
+        for (seq, kind) in [(1, 7), (2, 8), (3, 5)] {
+            bootstrap.lock().unwrap().ingest(seq, h264(kind, 1));
+        }
+        let diagnostics = Arc::new(RelayDiagnostics::default());
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let server = tokio::spawn(serve(
+            listener,
+            stream_tx.clone(),
+            Arc::clone(&bootstrap),
+            shutdown_rx,
+            Arc::clone(&diagnostics),
+        ));
+        let mut old_client = TcpStream::connect(address).await.unwrap();
+        old_client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0; 1024];
+        assert!(old_client.read(&mut response).await.unwrap() > 0);
+        let stats = Arc::new(Stats::default());
+        *stats.last_packet.lock().unwrap() = Some(Instant::now() - VIDEO_SILENCE);
+        let watchdog = tokio::spawn(watch_video_stalls(
+            Arc::downgrade(&session),
+            PreviewProfile::Baseline,
+            stats,
+            Arc::clone(&bootstrap),
+            stream_tx,
+            Arc::clone(&diagnostics),
+        ));
+        let _camera = tokio::time::timeout(Duration::from_secs(2), peer)
+            .await
+            .unwrap()
+            .unwrap();
+        // Drain any bootstrap bytes already in flight, then observe clean EOF.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while old_client.read(&mut response).await.unwrap() != 0 {}
+        })
+        .await
+        .unwrap();
+        let mut new_client = TcpStream::connect(address).await.unwrap();
+        new_client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let count = new_client.read(&mut response).await.unwrap();
+        assert!(String::from_utf8_lossy(&response[..count]).starts_with("HTTP/1.1 200"));
+        assert!(!bootstrap.lock().unwrap().snapshot().ready);
+        assert_eq!(diagnostics.stall_restarts.load(Ordering::Relaxed), 1);
+        watchdog.abort();
+        shutdown.send(true).unwrap();
+        server.await.unwrap();
+    }
 
     fn h264(nal_type: u8, marker: u8) -> Arc<[u8]> {
         Arc::from(vec![0, 0, 0, 1, 0x60 | nal_type, marker])
@@ -738,14 +1041,20 @@ mod tests {
             shutdown,
             server: tokio::spawn(std::future::pending()),
             pump: tokio::spawn(std::future::pending()),
+            watchdog: tokio::spawn(std::future::pending()),
             diagnostics: Arc::clone(&diagnostics),
         };
+        let watchdog_abort = running.watchdog.abort_handle();
         let mut owner = Some(running);
         drop(owner.take());
+        tokio::task::yield_now().await;
+        assert!(watchdog_abort.is_finished());
         let events = diagnostics.events.snapshot();
         assert!(events.iter().any(|event| event.message.contains("Uhd60")
             && event.message.contains("4096 bytes, 8 encoded payloads")));
-        assert!(!events.iter().any(|event| event.message.contains("accepted")));
+        assert!(!events
+            .iter()
+            .any(|event| event.message.contains("accepted")));
     }
 
     #[test]

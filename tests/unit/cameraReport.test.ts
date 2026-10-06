@@ -10,6 +10,7 @@ afterEach(resetCameraTransport);
 it("exports local recovery evidence while disconnected without sending any camera commands", async () => {
   const transport = makeFakeTransport({
     connectionDiagnostics: vi.fn(async () => ({
+      build: { version: "0.3.2-1", commit: "123456abcdef", profile: "release" },
       connected: false,
       lastReceiveAgeSeconds: null,
       lastVideoAgeSeconds: null,
@@ -41,11 +42,14 @@ it("exports local recovery evidence while disconnected without sending any camer
     } as WebcamStatus,
     ["Preview retry"],
     "v1.1.15",
+    { version: "0.3.2-1", commit: "frontend-revision", channel: "webcam-dev" },
   );
   expect(report.connection?.connected).toBe(false);
   expect(report.relay?.sourceLaggedPackets).toBe(2);
   expect(report.webcam.logs).toEqual(["Stream ended"]);
   expect(report.firmware).toBe("v1.1.15");
+  expect(report.appBuild?.commit).toBe("frontend-revision");
+  expect(report.connection?.build?.commit).toBe("123456abcdef");
   expect(transport.command).not.toHaveBeenCalled();
   expect(transport.probe).not.toHaveBeenCalled();
   expect(transport.connect).not.toHaveBeenCalled();
@@ -63,6 +67,7 @@ it("uses only known read commands and excludes device credentials and identifier
           serial_number: "private-serial",
           authorization_id: "private-auth",
           firmwareRevision: "1.0.238",
+          standby_duration: 60,
         },
       });
     if (code === 10)
@@ -74,10 +79,16 @@ it("uses only known read commands and excludes device credentials and identifier
     return encodeMessage(MSG.GetCurrentCaptureStatusResp, { status: {} });
   });
   setCameraTransport(makeFakeTransport({ command }));
-  const report = await collectCameraReport({ deviceName: "Luna Ultra", firmware: "1.0.238" });
+  const report = await collectCameraReport(
+    { deviceName: "Luna Ultra", firmware: "1.0.238" },
+    undefined,
+    { version: "0.3.2-1", commit: "frontend-revision", channel: "webcam-dev" },
+  );
   expect(report.mode).toBe("video");
   expect(report.modeUnchangedDuringRead).toBe(true);
   expect(report.device.values).toMatchObject({ firmwareRevision: "1.0.238" });
+  expect(report.device.values).toHaveProperty("standby_duration", 60);
+  expect(report.appBuild?.commit).toBe("frontend-revision");
   expect(JSON.stringify(report)).not.toContain("private-");
   expect(command.mock.calls.every(([code]) => [8, 10, 15].includes(code))).toBe(true);
 });

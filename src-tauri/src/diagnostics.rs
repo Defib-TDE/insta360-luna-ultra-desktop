@@ -5,6 +5,39 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BuildIdentity {
+    version: &'static str,
+    commit: &'static str,
+    profile: &'static str,
+}
+
+impl BuildIdentity {
+    pub(crate) fn current() -> Self {
+        Self {
+            version: env!("CARGO_PKG_VERSION"),
+            commit: env!("LUNA_BUILD_COMMIT"),
+            profile: env!("LUNA_BUILD_PROFILE"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_native_identity_matches_the_checked_out_revision() {
+        let identity = BuildIdentity::current();
+        assert_eq!(identity.version, env!("CARGO_PKG_VERSION"));
+        assert!(matches!(identity.profile, "debug" | "release"));
+        if let Ok(expected) = std::env::var("GITHUB_SHA") {
+            assert_eq!(identity.commit, &expected[..12]);
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticEvent {

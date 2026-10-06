@@ -124,6 +124,15 @@ policy links are in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md#wgu--proctored-exams
 
 ## Acceptance pass on real hardware
 
+If preview resumes only when you wake Luna's dark screen, set camera
+**Settings → General → Auto Power Off → Never**. Disable **Screen Auto Sleep**
+if offered, or use its longest duration for a controlled comparison. Note the
+original settings first. This is a camera-side test; the app does not change
+power settings. See [screen-sleep diagnostics](DEVICE_DIAGNOSTICS.md#screen-sleep-and-video-only-pauses).
+Studio's diagnostics and Settings show the build revision; pulling Git alone
+does not update an already running executable. Close the Dev app, rebuild and
+launch the executable at the path shown in the update instructions above.
+
 For intermittent recovery, save **Export connection report** in Studio's
 **Connection & diagnostics** immediately after the dropout, before closing the
 app. This local-only export also works while disconnected and retains bounded

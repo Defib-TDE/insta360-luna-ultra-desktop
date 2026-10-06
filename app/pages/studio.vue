@@ -7,6 +7,8 @@ import { PREVIEW_PROFILES, previewVerdict } from "~/utils/previewProfiles";
 
 useHead({ title: "Studio" });
 const camera = useCamera();
+const { appVersion, buildCommit, buildChannel } = useRuntimeConfig().public;
+const appBuild = { version: appVersion, commit: buildCommit, channel: buildChannel };
 const live = useLiveView();
 const {
   environment,
@@ -89,18 +91,22 @@ async function exportCameraReport() {
   collecting.value = true;
   reportLocation.value = null;
   try {
-    const report = await collectCameraReport(camera.info.value ?? {}, {
-      codec: codec.value,
-      sourceWidth: wanted.value ? status.value.sourceWidth : null,
-      sourceHeight: wanted.value ? status.value.sourceHeight : null,
-      observedDecodeFps: wanted.value ? status.value.sourceFps : null,
-      outputWidth: profile.value.width,
-      outputHeight: profile.value.height,
-      outputFps: wanted.value
-        ? (status.value.outputFps ?? live.sourceRequest.value.fps)
-        : live.sourceRequest.value.fps,
-      requestedProfile: live.sourceProfile.value,
-    });
+    const report = await collectCameraReport(
+      camera.info.value ?? {},
+      {
+        codec: codec.value,
+        sourceWidth: wanted.value ? status.value.sourceWidth : null,
+        sourceHeight: wanted.value ? status.value.sourceHeight : null,
+        observedDecodeFps: wanted.value ? status.value.sourceFps : null,
+        outputWidth: profile.value.width,
+        outputHeight: profile.value.height,
+        outputFps: wanted.value
+          ? (status.value.outputFps ?? live.sourceRequest.value.fps)
+          : live.sourceRequest.value.fps,
+        requestedProfile: live.sourceProfile.value,
+      },
+      appBuild,
+    );
     reportLocation.value = await saveBlob(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
       "luna-camera-capabilities.json",
@@ -119,6 +125,7 @@ async function exportConnectionReport() {
       status.value,
       live.diagnostics.value,
       camera.info.value?.firmware,
+      appBuild,
     );
     reportLocation.value = await saveBlob(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
@@ -705,6 +712,12 @@ async function exportConnectionReport() {
               <p class="text-[11px]">
                 Save this just after a dropout, before closing the app. It includes recovery reasons
                 and works while disconnected.
+              </p>
+              <p class="text-[11px]">Development build {{ appVersion }} · {{ buildCommit }}</p>
+              <p class="text-[11px]">
+                If video pauses when Luna's screen goes dark, wake the screen and check camera
+                Settings → General → Screen Auto Sleep and Auto Power Off. Use Never for auto power
+                off; disable screen sleep if offered, or select its longest duration for testing.
               </p>
               <p v-if="reportLocation" role="status">Saved to {{ reportLocation }}</p>
             </div>
