@@ -34,13 +34,16 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   Synthetic HEVC decoding measured 320×180/~29.8fps after warmup and correctly
   rejected a baseline-resolution match; a real decoder blocked inside open/read
   exited at its short probe deadline. These were generated/local streams only.
-- Source-profile validation: 338 unit, 59 Nuxt, 29 Rust and nine Python tests
+- Source-profile validation: 338 unit, 60 Nuxt, 29 Rust and nine Python tests
   passed locally, along with typecheck, lint, generated frontend and optimized
   native build. Chromium simulated a native 1080p60 request, 60fps publication
   and automatic baseline recovery after a rejected 4K60 request while output
   was stopped. The minimum 960px window had no horizontal overflow or page
   errors. Studio preview ownership accepts trailing-slash routes too. Reports
   do not associate measurements from stopped output with a newly selected source.
+- Studio uses the control-session relay even before webcam output starts, so a
+  baseline probe and experimental probe compare the same path. The Camera page
+  retains its MJPEG option. Windows validation of this final adjustment is pending.
 
 - User reports intermittent video/webcam recovery with Luna about five feet
   away, directly connected over Wi-Fi. Windows stayed joined to Luna's Wi-Fi;

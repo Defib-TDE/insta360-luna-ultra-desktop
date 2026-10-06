@@ -167,7 +167,7 @@ describe("Studio session ownership", () => {
     await vi.waitFor(() => expect(vm.live.active.value).toBe(false));
   });
 
-  it("forces elementary video even when MJPEG is available", async () => {
+  it("uses the control stream in Studio before publishing even when MJPEG is available", async () => {
     transport.probeOscPreview = vi.fn(async () => "http://camera/preview");
     await connectAndStart();
     expect(vm.live.transport.value).toBe("annexb");
@@ -180,7 +180,18 @@ describe("Studio session ownership", () => {
         fps: 30,
       }),
     );
-    expect(transport.liveViewStop).toHaveBeenCalledOnce();
+    expect(transport.probeOscPreview).not.toHaveBeenCalled();
+    expect(transport.liveViewStop).not.toHaveBeenCalled();
+  });
+
+  it("still allows the Camera page to choose an available MJPEG preview", async () => {
+    routing.route.path = "/camera";
+    transport.probeOscPreview = vi.fn(async () => "http://camera/preview");
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    expect(vm.live.transport.value).toBe("mjpeg");
+    expect(transport.liveViewStart).not.toHaveBeenCalled();
+    expect(client.start).not.toHaveBeenCalled();
   });
 
   it("preserves the existing worker through disconnect and restarts it for a new relay port", async () => {

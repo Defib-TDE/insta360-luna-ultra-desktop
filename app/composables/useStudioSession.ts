@@ -94,6 +94,7 @@ export function useStudioSession() {
     if (disposed) return;
     // Nuxt's route can still refer to the old page during a navigation guard.
     const preview = isPreviewRoute(navigatingTo ?? route.path);
+    const studio = (navigatingTo ?? route.path).replace(/\/+$/, "") === "/studio";
     if (!webcam.wanted.value && (webcam.running.value || webcam.status.value.url)) {
       await getWebcamClient().stop();
       await webcam.refresh();
@@ -118,7 +119,8 @@ export function useStudioSession() {
     if (webcam.wanted.value) await prepare();
     if (disposed || !camera.isConnected.value || (!preview && !webcam.wanted.value)) return;
     const request = webcam.request.value;
-    await live.start({ elementary: webcam.wanted.value });
+    // Studio's baseline and experimental probes must measure the same relay.
+    await live.start({ elementary: webcam.wanted.value || studio });
     if (webcam.wanted.value && live.failed.value)
       throw new Error(live.error.value ?? "Preview could not start. Try again.");
     if (

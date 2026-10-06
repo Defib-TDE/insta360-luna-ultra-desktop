@@ -46,7 +46,9 @@ them. Source cadence describes this PC's wall-clock decode, not a sensor clock.
 ## Verify a source with the decoder script
 
 Select the source in Studio first. Keep Studio open; its preview starts even
-with webcam output stopped. The probe joins the established app relay and does
+with webcam output stopped. Studio uses the control-session relay for baseline
+and experimental requests, so comparisons do not switch to MJPEG. The probe
+joins the established app relay and does
 not change the camera request or open another control connection.
 
 At the Windows repository root, run each command as one complete line. Replace
