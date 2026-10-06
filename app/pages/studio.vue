@@ -220,7 +220,7 @@ async function exportConnectionReport() {
                   v-if="camera.isConnected.value && live.failed.value"
                   label="Retry preview"
                   icon="i-lucide-refresh-cw"
-                  @click="live.retry({ elementary: wanted })"
+                  @click="live.retry({ elementary: true })"
                 />
                 <UButton
                   v-if="!camera.isConnected.value"
@@ -644,7 +644,7 @@ async function exportConnectionReport() {
           color="neutral"
           variant="outline"
           :disabled="preparing"
-          @click="live.retry({ elementary: wanted })"
+          @click="live.retry({ elementary: true })"
         />
 
         <details class="rounded-2xl border border-default p-4 text-xs text-muted">
