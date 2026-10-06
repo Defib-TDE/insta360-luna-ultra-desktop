@@ -48,11 +48,12 @@ them. Source cadence describes this PC's wall-clock decode, not a sensor clock.
 Select the source in Studio first. Keep Studio open; its preview starts even
 with webcam output stopped. Studio uses the control-session relay for baseline
 and experimental requests, so comparisons do not switch to MJPEG. The probe
-joins the established app relay and does
-not change the camera request or open another control connection.
+joins the established app relay without changing the camera request or opening
+another control connection.
 
-At the Windows repository root, run each command as one complete line. Replace
-the URL if Studio shows a fallback port. First measure baseline:
+At the Windows repository root, run each command as one complete line. Expand
+Studio's **Connection & diagnostics** section to check the current stream URL;
+replace the example URL if a fallback port is shown. First measure baseline:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\start-webcam.ps1 -Url "http://127.0.0.1:49183/stream" -Codec hevc -ProbeOnly -ProbeFrames 300 -WarmupSeconds 5 -ExpectProfile baseline

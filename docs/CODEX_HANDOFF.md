@@ -1,6 +1,6 @@
 # Codex handoff: webcam bridge
 
-Updated 2026-10-05 on branch `feature/webcam-bridge` from base
+Updated 2026-10-06 on branch `feature/webcam-bridge` from base
 `696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
 maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
@@ -43,7 +43,12 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   do not associate measurements from stopped output with a newly selected source.
 - Studio uses the control-session relay even before webcam output starts, so a
   baseline probe and experimental probe compare the same path. The Camera page
-  retains its MJPEG option. Windows validation of this final adjustment is pending.
+  retains its MJPEG option. Both Studio retry buttons preserve the relay.
+- Final source-profile code `cfed4b7` passed [CI 37397119906](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37397119906):
+  338 unit, 60 Nuxt, 29 native tests on Linux and Windows, nine Python simulations,
+  typecheck, lint, frontend generation, dependency audits, Windows inventory,
+  bundled engine launch and MSI/NSIS creation. No installers were published.
+  Real-camera source-profile measurements and a dropout soak are still required.
 
 - User reports intermittent video/webcam recovery with Luna about five feet
   away, directly connected over Wi-Fi. Windows stayed joined to Luna's Wi-Fi;
