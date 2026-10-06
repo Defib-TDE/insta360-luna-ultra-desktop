@@ -155,11 +155,26 @@ fn build_file_command(seq: u8, code: u16, request_id: u16, body: &[u8]) -> Vec<u
 
 #[derive(Debug, Clone)]
 pub(crate) struct RawResponse {
-    /// Echoed command code; asserted in tests, carried for future status checks.
-    #[allow(dead_code)]
+    /// Echoed command code. A reply alone does not establish command success.
     code: u16,
     request_id: u16,
+    response_type: u8,
+    envelope_value: u32,
     body: Vec<u8>,
+}
+
+impl RawResponse {
+    /// Numeric envelope metadata only: never export opaque camera reply bodies.
+    /// The envelope value is intentionally not interpreted as a success code.
+    pub(crate) fn diagnostic_summary(&self) -> String {
+        format!(
+            "reply command {}, type {}, envelope {}, body {} bytes",
+            self.code,
+            self.response_type,
+            self.envelope_value,
+            self.body.len()
+        )
+    }
 }
 
 /// A parsed UCD2 frame. FILE answers commands, STREAM is the keepalive
@@ -238,6 +253,8 @@ fn drain_frames(buffer: &mut Vec<u8>) -> Vec<Frame> {
         frames.push(Frame::File(RawResponse {
             code: u16::from_le_bytes([raw[0], raw[1]]),
             request_id: u16::from_le_bytes([raw[3], raw[4]]),
+            response_type: raw[2],
+            envelope_value: u32::from_le_bytes([raw[5], raw[6], raw[7], raw[8]]),
             body: raw[9..].to_vec(),
         }));
     }
@@ -1123,10 +1140,27 @@ mod tests {
             Frame::File(response) => {
                 assert_eq!(response.code, 12);
                 assert_eq!(response.request_id, 7);
+                assert_eq!(response.response_type, 3);
+                assert_eq!(response.envelope_value, 0x8000);
                 assert_eq!(response.body, b"ok");
             }
             other => panic!("expected a file response, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn reply_diagnostics_exclude_opaque_body_contents_and_success_claims() {
+        let response = RawResponse {
+            code: CODE_START_LIVE_STREAM,
+            request_id: 20,
+            response_type: 3,
+            envelope_value: 0x8000,
+            body: b"private-opaque-payload".to_vec(),
+        };
+        let summary = response.diagnostic_summary();
+        assert!(summary.contains("reply command 1"));
+        assert!(!summary.contains("private-opaque"));
+        assert!(!summary.contains("accepted") && !summary.contains("success"));
     }
 
     /// End-to-end against the vendored luna_mock_server: our stream hello

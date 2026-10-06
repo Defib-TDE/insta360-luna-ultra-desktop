@@ -294,6 +294,7 @@ struct Running {
     shutdown: watch::Sender<bool>,
     server: JoinHandle<()>,
     pump: JoinHandle<()>,
+    diagnostics: Arc<RelayDiagnostics>,
 }
 
 impl Running {
@@ -309,6 +310,19 @@ impl Drop for Running {
         let _ = self.shutdown.send(true);
         self.server.abort();
         self.pump.abort();
+        let seconds = self
+            .stats
+            .started
+            .lock()
+            .unwrap()
+            .map(|at| at.elapsed().as_secs_f64())
+            .unwrap_or_default();
+        self.diagnostics.events.note(format!(
+            "Preview attempt {:?} ended: {} bytes, {} encoded payloads over {seconds:.1}s. These are not decoded-frame counts.",
+            self.profile,
+            self.stats.bytes.load(Ordering::Relaxed),
+            self.stats.packets.load(Ordering::Relaxed)
+        ));
     }
 }
 
@@ -581,9 +595,14 @@ pub async fn luna_liveview_start(
         shutdown,
         server,
         pump,
+        diagnostics: Arc::clone(&live.diagnostics),
     };
 
-    if let Err(error) = session
+    live.diagnostics.events.note(format!(
+        "Sending camera preview request {profile:?}; primary resolution enum {}.",
+        profile.resolution()
+    ));
+    let reply = match session
         .send_command(
             CODE_START_LIVE_STREAM,
             &build_start_live_stream_body(profile),
@@ -591,12 +610,16 @@ pub async fn luna_liveview_start(
         )
         .await
     {
-        drop(running);
-        return Err(format!("camera rejected START_LIVE_STREAM: {error}"));
-    }
+        Ok(reply) => reply,
+        Err(error) => {
+            live.diagnostics.events.note(format!("Camera preview request {profile:?} received no usable command reply: {error}"));
+            drop(running);
+            return Err(format!("START_LIVE_STREAM command failed: {error}"));
+        }
+    };
 
     *guard = Some(running);
-    live.diagnostics.events.note(format!("Camera preview request {profile:?} accepted; delivered quality must be decoded and measured."));
+    live.diagnostics.events.note(format!("Camera preview request {profile:?} received a {}; requested quality is unverified until video is decoded and measured.", reply.diagnostic_summary()));
     Ok(LiveViewInfo {
         url: format!("http://127.0.0.1:{port}/stream"),
         port,
@@ -697,6 +720,32 @@ mod tests {
         }
         assert!(serde_json::from_str::<PreviewProfile>("\"arbitrary\"").is_err());
         assert_eq!(PreviewProfile::default(), PreviewProfile::Baseline);
+    }
+
+    #[tokio::test]
+    async fn stopped_preview_retains_attempt_totals_without_frame_or_quality_claims() {
+        let diagnostics = Arc::new(RelayDiagnostics::default());
+        let stats = Arc::new(Stats::default());
+        stats.bytes.store(4096, Ordering::Relaxed);
+        stats.packets.store(8, Ordering::Relaxed);
+        *stats.started.lock().unwrap() = Some(Instant::now());
+        let (shutdown, _) = watch::channel(false);
+        let running = Running {
+            port: 49183,
+            profile: PreviewProfile::Uhd60,
+            session: Weak::new(),
+            stats,
+            shutdown,
+            server: tokio::spawn(std::future::pending()),
+            pump: tokio::spawn(std::future::pending()),
+            diagnostics: Arc::clone(&diagnostics),
+        };
+        let mut owner = Some(running);
+        drop(owner.take());
+        let events = diagnostics.events.snapshot();
+        assert!(events.iter().any(|event| event.message.contains("Uhd60")
+            && event.message.contains("4096 bytes, 8 encoded payloads")));
+        assert!(!events.iter().any(|event| event.message.contains("accepted")));
     }
 
     #[test]

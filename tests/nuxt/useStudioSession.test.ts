@@ -220,6 +220,42 @@ describe("Studio session ownership", () => {
     expect(client.start).toHaveBeenCalledOnce();
   });
 
+  it("recovers a dropped experimental source at baseline and restores 30fps output", async () => {
+    vm.live.sourceProfile.value = "4k60";
+    await connectAndStart();
+    vm.camera.status.value = "disconnected";
+    expect(vm.live.sourceProfile.value).toBe("baseline");
+    expect(vm.webcam.wanted.value).toBe(true);
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(false));
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(client.start).toHaveBeenCalledTimes(2));
+    expect(transport.liveViewStart).toHaveBeenLastCalledWith("baseline");
+    expect(client.start).toHaveBeenLastCalledWith(expect.objectContaining({ fps: 30 }));
+    expect(transport.command).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a pending experimental start after a quick disconnect and reconnect", async () => {
+    let finish!: (info: { url: string; port: number }) => void;
+    transport.liveViewStart = vi.fn((profile) => {
+      if (profile === "1080p60")
+        return new Promise<{ url: string; port: number }>((resolve) => {
+          finish = resolve;
+        });
+      return Promise.resolve({ url: "http://127.0.0.1:49183/stream", port: 49183 });
+    });
+    vm.live.sourceProfile.value = "1080p60";
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(transport.liveViewStart).toHaveBeenCalledOnce());
+    vm.camera.status.value = "disconnected";
+    vm.camera.status.value = "connected";
+    finish({ url: "http://127.0.0.1:49182/stream", port: 49182 });
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    expect(vm.live.sourceProfile.value).toBe("baseline");
+    expect(transport.liveViewStart).toHaveBeenCalledTimes(2);
+    expect(transport.liveViewStart).toHaveBeenLastCalledWith("baseline");
+    expect(vm.live.streamUrl.value).toBe("http://127.0.0.1:49183/stream");
+  });
+
   it("releases output on an explicit disconnect instead of promising automatic recovery", async () => {
     await connectAndStart();
     await vm.camera.disconnect();

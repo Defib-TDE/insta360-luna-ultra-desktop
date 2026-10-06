@@ -326,6 +326,7 @@ async function exportConnectionReport() {
                 These request a different feed from Luna. Experimental profiles may be ignored or
                 unavailable; use the source measurements below to check what arrives. Stop webcam
                 before changing. Keep camera mode and orientation fixed while comparing.
+                Connection-loss recovery returns to the tested baseline.
               </p>
               <p v-if="status.sourceWidth && wanted" class="text-xs text-muted" role="status">
                 {{

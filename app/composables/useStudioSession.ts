@@ -192,8 +192,14 @@ export function useStudioSession() {
   );
   watch(
     camera.isConnected,
-    (connected) => {
+    (connected, wasConnected) => {
       if (connected) live.resetRecovery();
+      else if (wasConnected && live.sourceProfile.value !== "baseline") {
+        live.note(
+          `Control connection lost with experimental source ${live.sourceProfile.value}. Recovery will use the tested baseline.`,
+        );
+        live.sourceProfile.value = "baseline";
+      }
     },
     { flush: "sync" },
   );

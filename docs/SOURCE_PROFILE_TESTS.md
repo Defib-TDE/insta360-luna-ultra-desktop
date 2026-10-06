@@ -4,6 +4,15 @@ The source selector changes the camera's preview request, not just output size.
 Only the baseline has passed this user's hardware tests. Schema enum names are
 experimental requests, not a list of supported Luna capabilities.
 
+**Hardware follow-up, 2026-10-05:** this user reports that their v1.1.15 unit
+kept delivering approximately 720p30 under 1080p30/60 and 4K30/60 requests.
+The capabilities report records Slow-mo. The final
+decoded sample was 1280×720 at 29.91fps despite 60fps virtual output. These higher
+requests are not qualified; use baseline for normal webcam operation. A command
+reply proves neither application nor success of a requested preview setting.
+This result does not establish the camera's absolute maximum or rule out a
+different firmware/API configuration route.
+
 | Source choice | Primary resolution enum | Expected delivered sample |
 | --- | --- | --- |
 | Tested baseline | 9, `RES_1440_720P30` | This unit delivered 1280×720/~30fps in Slow-mo |
@@ -19,6 +28,8 @@ The source selector starts at baseline on every app launch. Stop webcam before
 changing it. Rejected or silent requests fall back to baseline; an experimental
 decoder startup failure also restores baseline. A request that produces a lower
 quality stays visible as a mismatch. **Use tested baseline** restores it manually.
+If the control connection drops during an experimental selection, recovery also
+returns to baseline instead of replaying that experiment on the new session.
 
 Source requests for 60fps also set virtual output to 60fps. If the actual source
 remains at 30fps, that output repeats pictures. Full HD is a 1920×1080 output

@@ -1,6 +1,6 @@
 # Codex handoff: webcam bridge
 
-Updated 2026-10-06 on branch `feature/webcam-bridge` from base
+Updated 2026-10-05 on branch `feature/webcam-bridge` from base
 `696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
 maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
@@ -14,6 +14,42 @@ keep the existing settings. Shooting orientation remains camera-controlled.
 Guided OBS streaming is included; direct in-app broadcasting, camera
 audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
+
+## Hardware source-profile follow-up (2026-10-05)
+
+- User tried 1080p30/60 and 4K30/60 and reports all kept playing at approximately
+  720p30. Native events confirm that every higher request was sent through the
+  new implementation and received a command reply. The final decoded sample is
+  **1280×720 at 29.91fps**, with 1920×1080/60 virtual output. Higher preview
+  quality is not achieved by these requests on this unit in the tested setup.
+- Capabilities report still identifies **v1.1.15**, **Slow-mo** and HEVC. Its
+  preview dimensions are null because webcam output was stopped during export;
+  its 4K120 recording setting does not establish preview quality. These tests
+  do not prove an absolute firmware/sensor maximum or a working alternative
+  preview-configuration command. Do not describe the experimental presets as
+  supported modes.
+- At 9:58:34 p.m. EDT the camera closed the control socket. Reconnect succeeded
+  about 1.3 seconds later, then the remote host reset the new socket. There was
+  also a capture-status command timeout and four codec-header changes earlier.
+  Source/client backlog counters are zero in this report. The cause of the
+  socket closure is not established; neither the Wi-Fi link nor a camera crash
+  can be diagnosed from this report alone.
+- Corrected misleading `accepted`/`rejected` messages: the backend previously
+  established only arrival or failure of a command reply. New diagnostics
+  record the requested resolution enum and numeric reply-envelope metadata,
+  plus body length, without exporting opaque reply contents or interpreting
+  unknown envelope values as success codes. Decoded video establishes quality.
+- Per-attempt byte/payload totals now survive preview Stop in bounded event
+  history. Zero counters after Stop no longer hide whether earlier attempts
+  received encoded data. Encoded payloads are not decoded frames.
+- Losing the control connection with an experimental source resets selection
+  to baseline before recovery, including a late native-start reply after a
+  quick reconnect. Webcam intent is preserved and the restarted publisher uses
+  30fps. Camera mode stays fixed. Baseline remains the normal-use choice.
+- Uploaded reports remain outside Git; only these findings are recorded.
+  Local validation passed 338 unit, 62 Nuxt and 31 Rust tests, including the
+  real Node mock-server integration. Typecheck, lint, frontend generation and
+  optimized Linux native build passed. Windows CI for this follow-up is pending.
 
 ## Video interruption investigation (2026-10-05)
 

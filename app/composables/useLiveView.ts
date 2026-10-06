@@ -147,7 +147,11 @@ export function useLiveView() {
           await stopNative();
           return;
         }
-        note("Camera accepted START_LIVE_STREAM. Serving on port " + info.port + ".");
+        note(
+          "START_LIVE_STREAM reply received. Requested quality is unverified. Serving on port " +
+            info.port +
+            ".",
+        );
         note("External decoder URL: " + info.url);
         transport.value = "annexb";
         streamUrl.value = info.url;
