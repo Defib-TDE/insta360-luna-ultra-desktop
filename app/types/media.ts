@@ -57,6 +57,25 @@ export interface LiveViewStats {
   packets: number;
   firstBytesHex: string;
   seconds: number;
+  sourceLaggedPackets?: number;
+  clientLaggedPackets?: number;
+  headerChanges?: number;
+  clientConnections?: number;
+  lastPacketAgeSeconds?: number | null;
+  events?: DiagnosticEvent[];
+}
+
+export interface DiagnosticEvent {
+  atUnixMs: number;
+  message: string;
+}
+
+export interface ConnectionDiagnostics {
+  connected: boolean;
+  lastReceiveAgeSeconds: number | null;
+  lastVideoAgeSeconds: number | null;
+  commandTimeouts: number;
+  events: DiagnosticEvent[];
 }
 
 export type DownloadStatus = "queued" | "downloading" | "done" | "error";

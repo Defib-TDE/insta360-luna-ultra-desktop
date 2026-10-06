@@ -117,6 +117,15 @@ policy links are in [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md#wgu--proctored-exams
 
 ## Acceptance pass on real hardware
 
+For intermittent recovery, save **Export connection report** in Studio's
+**Connection & diagnostics** immediately after the dropout, before closing the
+app. This local-only export also works while disconnected and retains bounded
+native recovery history across preview restarts. See
+[DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md#capture-a-video-interruption) for
+the fields and a controlled comparison. A confirmed TCP header-fragmentation
+bug has been fixed; the cause of the user's particular dropout is still pending
+this evidence.
+
 - Test a cold connection five times; record time to first picture and whether
   the automatic preview retry helps. The initial startup problem is not yet
   root-caused. A byte timeout is distinct from successful frame decoding.

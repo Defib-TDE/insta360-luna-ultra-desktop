@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { WEBCAM_PROFILES } from "~/utils/webcamProfiles";
 import { openStudioHelp } from "~/utils/webcamClient";
-import { collectCameraReport } from "~/utils/cameraReport";
+import { collectCameraReport, collectConnectionReport } from "~/utils/cameraReport";
 import { saveBlob } from "~/utils/saveFile";
 
 useHead({ title: "Studio" });
@@ -31,6 +31,7 @@ const { colorway } = useCameraAppearance();
 const destination = ref("calls");
 const copied = ref(false);
 const collecting = ref(false);
+const collectingConnection = ref(false);
 const reportLocation = ref<string | null>(null);
 const outputStyle = computed(() => ({
   aspectRatio: `${profile.value.width} / ${profile.value.height}`,
@@ -104,6 +105,25 @@ async function exportCameraReport() {
     error.value = `Camera report could not finish: ${String(cause)}`;
   } finally {
     collecting.value = false;
+  }
+}
+
+async function exportConnectionReport() {
+  collectingConnection.value = true;
+  try {
+    const report = await collectConnectionReport(
+      status.value,
+      live.diagnostics.value,
+      camera.info.value?.firmware,
+    );
+    reportLocation.value = await saveBlob(
+      new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+      "luna-connection-report.json",
+    );
+  } catch (cause) {
+    error.value = `Connection report could not finish: ${String(cause)}`;
+  } finally {
+    collectingConnection.value = false;
   }
 }
 </script>
@@ -616,6 +636,19 @@ async function exportCameraReport() {
               <p class="text-[11px]">
                 Reads known camera options through this connection. No settings change; Wi-Fi
                 credentials and device identifiers are omitted.
+              </p>
+              <UButton
+                label="Export connection report"
+                icon="i-lucide-activity"
+                size="xs"
+                color="neutral"
+                variant="outline"
+                :loading="collectingConnection"
+                @click="exportConnectionReport"
+              />
+              <p class="text-[11px]">
+                Save this just after a dropout, before closing the app. It includes recovery reasons
+                and works while disconnected.
               </p>
               <p v-if="reportLocation" role="status">Saved to {{ reportLocation }}</p>
             </div>

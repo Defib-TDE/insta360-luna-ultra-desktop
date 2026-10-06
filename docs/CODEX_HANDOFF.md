@@ -15,6 +15,57 @@ Guided OBS streaming is included; direct in-app broadcasting, camera
 audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 
+## Video interruption investigation (2026-10-05)
+
+- User reports intermittent video/webcam recovery with Luna about five feet
+  away, directly connected over Wi-Fi. Windows stayed joined to Luna's Wi-Fi;
+  the user identifies video recovery rather than a Windows disconnection.
+  No dropout timeline was in the capabilities report, so the cause of this
+  particular run remains unproven.
+- Uploaded camera report establishes firmware **v1.1.15**, Slow-mo, HEVC source
+  **1280×720 at observed 29.96fps**, and 1280×720/30 virtual output. The
+  `RES_3840_2160P120` photography value describes recording, not preview.
+  Hardware type remains unknown; posture is not a verified orientation setter.
+- Four user Windows snapshots cover unplugged, plugged in and camera USB/file
+  transfer selections. All three after snapshots add exactly one USB mass
+  storage interface, **VID 2E1A / PID 1009**, USB class 08/subclass 06/protocol 50,
+  `USBSTOR`, status OK/error code 0. Network adapters/routes and DirectShow
+  camera lists do not change. There is no observed UVC or USB network route;
+  the camera selects its USB profile and Windows loads the matching driver.
+  These observations do not rule out an undiscovered firmware profile.
+- Confirmed parser bug: a TCP read ending in `U`, `UC` or `UCD` discarded that
+  header prefix, losing the following video/control frame. Preserve the prefix
+  and verify every split point plus byte-by-byte delivery and resynchronization.
+  This can disrupt decoding over healthy Wi-Fi; the report does not prove it
+  caused the user's specific interruption.
+- Authorization hello remains every three seconds. Valid incoming video,
+  replies or keepalive echoes now prove control-session liveness without two
+  extra status/options queries each tick. After twelve seconds without valid
+  incoming frames, probe capture status with a two-second deadline. Actual EOF,
+  read failure or a failed/stalled write retires the session. Socket writes are
+  bounded, cancelled commands clean up pending requests, and obsolete sessions
+  cannot remove a replacement. Disconnect invalidates in-flight connection setup.
+- HTTP health checks consider native incoming traffic, have a five-second HTTP
+  deadline and ignore stale failed probes after a newer successful response or
+  rearm. A health-triggered teardown preserves automatic reconnect intent;
+  explicit Disconnect cancels it. Late connect results cannot restore UI state.
+- Studio adds **Export connection report**, a local-only snapshot available
+  while disconnected. Timestamped control/relay/helper events, source/client
+  backlog counters, codec-header changes and last-video ages distinguish socket
+  loss from relay/decoder recovery. Bounded native history survives preview
+  restarts in this app process. No camera GETs or writes are triggered by export.
+- Local automated validation: **336 unit, 53 Nuxt and 28 Rust tests** passed;
+  native tests included the real Node mock-server handshake/delete integration
+  inside the isolated Linux test container. Optimized native build, TypeScript,
+  lint and frontend generation passed. The new fragmentation regression fails
+  against the old parser at split 1 and passes after the repair. Chromium at
+  960×640 exported an offline report with native recovery evidence, no camera
+  commands, page errors or horizontal overflow. Critical production dependency
+  audit passed (five findings below the configured critical threshold remain).
+  Windows CI and the user's real-camera timed run remain pending at this commit.
+  This increment does not establish a resolved hardware dropout, native higher
+  quality, camera audio or USB video.
+
 ## Reliability and camera preparation increment (2026-10-05)
 
 - User approved proceeding after research and offered device/USB diagnostics.

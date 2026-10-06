@@ -1,10 +1,56 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { collectCameraReport } from "~/utils/cameraReport";
+import { collectCameraReport, collectConnectionReport } from "~/utils/cameraReport";
+import type { WebcamStatus } from "~/types/webcam";
 import { MSG, encodeMessage } from "~/utils/lunaProto";
 import { resetCameraTransport, setCameraTransport } from "~/utils/transport";
 import { makeFakeTransport } from "../helpers/fakeTransport";
 
 afterEach(resetCameraTransport);
+
+it("exports local recovery evidence while disconnected without sending any camera commands", async () => {
+  const transport = makeFakeTransport({
+    connectionDiagnostics: vi.fn(async () => ({
+      connected: false,
+      lastReceiveAgeSeconds: null,
+      lastVideoAgeSeconds: null,
+      commandTimeouts: 0,
+      events: [{ atUnixMs: 1000, message: "Camera closed the control socket." }],
+    })),
+    liveViewStats: vi.fn(async () => ({
+      bytes: 0,
+      packets: 0,
+      firstBytesHex: "",
+      seconds: 0,
+      sourceLaggedPackets: 2,
+      events: [{ atUnixMs: 900, message: "Source fell behind." }],
+    })),
+  });
+  setCameraTransport(transport);
+  const report = await collectConnectionReport(
+    {
+      phase: "reconnecting",
+      sourceWidth: 1280,
+      sourceHeight: 720,
+      sourceFps: 29.96,
+      outputFps: 30,
+      reconnects: 1,
+      error: null,
+      logs: ["Stream ended"],
+      url: "http://127.0.0.1:49183/stream",
+      device: "OBS Virtual Camera",
+    } as WebcamStatus,
+    ["Preview retry"],
+    "v1.1.15",
+  );
+  expect(report.connection?.connected).toBe(false);
+  expect(report.relay?.sourceLaggedPackets).toBe(2);
+  expect(report.webcam.logs).toEqual(["Stream ended"]);
+  expect(report.firmware).toBe("v1.1.15");
+  expect(transport.command).not.toHaveBeenCalled();
+  expect(transport.probe).not.toHaveBeenCalled();
+  expect(transport.connect).not.toHaveBeenCalled();
+  expect(report.webcam).not.toHaveProperty("url");
+});
 
 it("uses only known read commands and excludes device credentials and identifiers", async () => {
   const command = vi.fn(async (code: number) => {

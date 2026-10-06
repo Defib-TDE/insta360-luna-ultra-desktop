@@ -2,6 +2,7 @@ import { readCameraMode } from "~/utils/cameraPreparation";
 import { readDeviceOptions, readPhotographyOptions } from "~/utils/lunaSettings";
 import { MSG, decodeMessage, type ProtoObject } from "~/utils/lunaProto";
 import { getCameraTransport } from "~/utils/transport";
+import type { WebcamStatus } from "~/types/webcam";
 
 const DEVICE_FIELDS = [
   "video_sub_mode",
@@ -61,5 +62,38 @@ export async function collectCameraReport(
     captureStatus: decodeMessage(MSG.GetCurrentCaptureStatusResp, capture).status as
       | ProtoObject
       | undefined,
+  };
+}
+
+/** Local snapshots only: works during a dropout and cannot add camera load. */
+export async function collectConnectionReport(
+  webcam: WebcamStatus,
+  previewNotes: string[],
+  firmware?: string,
+) {
+  const transport = getCameraTransport();
+  const [connection, relay] = await Promise.all([
+    transport.connectionDiagnostics?.().catch(() => null) ?? null,
+    transport.liveViewStats().catch(() => null),
+  ]);
+  return {
+    schemaVersion: 1,
+    collectedAt: new Date().toISOString(),
+    scope:
+      "Local connection, relay and decoder diagnostics. No camera commands, device identifiers or Wi-Fi credentials. Relay recovery counters cover this app process; command timeouts cover the current control session.",
+    firmware,
+    connection,
+    relay,
+    previewNotes: previewNotes.slice(-80),
+    webcam: {
+      phase: webcam.phase,
+      sourceWidth: webcam.sourceWidth,
+      sourceHeight: webcam.sourceHeight,
+      observedDecodeFps: webcam.sourceFps,
+      outputFps: webcam.outputFps,
+      reconnects: webcam.reconnects,
+      error: webcam.error,
+      logs: webcam.logs.slice(-60),
+    },
   };
 }

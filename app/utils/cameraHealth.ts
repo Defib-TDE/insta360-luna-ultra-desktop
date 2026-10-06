@@ -19,6 +19,8 @@ let consecutiveFailures = 0;
 let onDeadCallback: (() => void) | null = null;
 let probeCamera: (() => Promise<boolean>) | null = null;
 let probeInFlight = false;
+let revision = 0;
+let successRevision = 0;
 
 /**
  * Start counting. Replaces any previous callback and resets the count.
@@ -27,6 +29,7 @@ let probeInFlight = false;
  * @param probe Cheap liveness check; resolves true when the camera answered.
  */
 export function armCameraHealth(onDead: () => void, probe: () => Promise<boolean>): void {
+  revision += 1;
   consecutiveFailures = 0;
   probeInFlight = false;
   onDeadCallback = onDead;
@@ -35,6 +38,7 @@ export function armCameraHealth(onDead: () => void, probe: () => Promise<boolean
 
 /** Stop counting. Reports become no-ops until armed again. */
 export function disarmCameraHealth(): void {
+  revision += 1;
   consecutiveFailures = 0;
   probeInFlight = false;
   onDeadCallback = null;
@@ -44,6 +48,7 @@ export function disarmCameraHealth(): void {
 export function reportCameraSuccess(): void {
   if (!onDeadCallback) return;
   consecutiveFailures = 0;
+  successRevision += 1;
 }
 
 export function reportCameraFailure(): void {
@@ -59,6 +64,8 @@ async function runProbe(): Promise<void> {
   const probe = probeCamera;
   const callback = onDeadCallback;
   if (!probe || !callback) return;
+  const startedRevision = revision;
+  const startedSuccess = successRevision;
 
   probeInFlight = true;
   let alive = false;
@@ -70,10 +77,10 @@ async function runProbe(): Promise<void> {
 
   // The session may have been torn down or re-armed while the probe was open;
   // in that case this verdict is stale and must not fire anything.
-  if (onDeadCallback !== callback) return;
+  if (revision !== startedRevision) return;
   probeInFlight = false;
 
-  if (alive) {
+  if (alive || successRevision !== startedSuccess) {
     // The camera answered, so the failures were the transfer's fault.
     consecutiveFailures = 0;
     return;

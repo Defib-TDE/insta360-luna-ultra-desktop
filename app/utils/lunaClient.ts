@@ -1,4 +1,10 @@
-import type { CameraInfo, LiveViewStats, MediaItem, MediaStorage } from "~/types/media";
+import type {
+  CameraInfo,
+  ConnectionDiagnostics,
+  LiveViewStats,
+  MediaItem,
+  MediaStorage,
+} from "~/types/media";
 import { isTauri } from "~/utils/saveFile";
 import { buildMediaItems, entriesFromPaths } from "~/utils/lunaIndex";
 import { reportCameraFailure, reportCameraSuccess } from "~/utils/cameraHealth";
@@ -79,15 +85,29 @@ async function rawCameraFetch(url: string, init?: RequestInit): Promise<Response
 }
 
 /**
- * Cheap liveness check used by the health detector: ask for the storage root
- * listing and treat any completed response, whatever the status, as proof the
- * camera answered. Deliberately bypasses `cameraFetch` so the probe cannot
- * feed the very counter that triggered it.
+ * Recent native control/video traffic proves liveness even when HTTP is busy.
+ * Otherwise ask for the storage root with a bounded deadline. Any completed
+ * response proves the camera answered. Bypasses health reporting so the probe
+ * cannot feed the counter that triggered it.
  */
 async function probeCamera(host: string): Promise<boolean> {
+  if (isTauri()) {
+    // The camera's HTTP server may be busy while control/video remain healthy.
+    // Let the native receive watchdog own disconnection of that shared socket.
+    const diagnostics = await tauriInvoke<ConnectionDiagnostics>("luna_connection_diagnostics");
+    if (
+      diagnostics.connected &&
+      diagnostics.lastReceiveAgeSeconds !== null &&
+      diagnostics.lastReceiveAgeSeconds < 12
+    )
+      return true;
+  }
   const root = STORAGE_ROOTS[0]!;
   try {
-    await rawCameraFetch(baseUrl(host, root.path), { headers: { "Cache-Control": "no-cache" } });
+    await rawCameraFetch(baseUrl(host, root.path), {
+      headers: { "Cache-Control": "no-cache" },
+      signal: AbortSignal.timeout(5000),
+    });
     return true;
   } catch {
     return false;
@@ -148,6 +168,10 @@ export const lunaClient = {
 
   async liveViewStats(): Promise<LiveViewStats> {
     return tauriInvoke<LiveViewStats>("luna_liveview_stats");
+  },
+
+  async connectionDiagnostics(): Promise<ConnectionDiagnostics> {
+    return tauriInvoke<ConnectionDiagnostics>("luna_connection_diagnostics");
   },
 
   /**

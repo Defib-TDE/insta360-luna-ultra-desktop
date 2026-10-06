@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -73,7 +73,8 @@ impl Default for WebcamState {
 
 fn log_line(status: &Arc<StdMutex<WebcamStatus>>, line: String) {
     let mut status = status.lock().unwrap();
-    status.logs.push(line.chars().take(1000).collect());
+    let at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    status.logs.push(format!("[{at}] {}", line.chars().take(1000).collect::<String>()));
     if status.logs.len() > 60 {
         status.logs.remove(0);
     }

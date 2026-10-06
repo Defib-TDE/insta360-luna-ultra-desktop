@@ -17,6 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, watch, Mutex};
 use tokio::task::{JoinHandle, JoinSet};
 
+use crate::diagnostics::{DiagnosticEvent, EventLog};
 use crate::luna::{
     wire_field_varint, LunaState, Session, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM,
 };
@@ -244,6 +245,17 @@ fn is_keyframe(codec: Codec, nal_type: u8) -> bool {
 #[derive(Default)]
 pub struct LiveViewState {
     inner: Mutex<Option<Running>>,
+    diagnostics: Arc<RelayDiagnostics>,
+}
+
+#[derive(Default)]
+struct RelayDiagnostics {
+    source_lagged_packets: AtomicU64,
+    client_lagged_packets: AtomicU64,
+    header_changes: AtomicU64,
+    client_connections: AtomicU64,
+    last_packet: StdMutex<Option<Instant>>,
+    events: EventLog,
 }
 
 struct Running {
@@ -286,6 +298,13 @@ pub struct LiveViewStats {
     pub packets: u64,
     pub first_bytes_hex: String,
     pub seconds: f64,
+    /// Cumulative for this app process, preserved across preview restarts.
+    pub source_lagged_packets: u64,
+    pub client_lagged_packets: u64,
+    pub header_changes: u64,
+    pub client_connections: u64,
+    pub last_packet_age_seconds: Option<f64>,
+    pub events: Vec<DiagnosticEvent>,
 }
 
 async fn write_bootstrap(
@@ -303,7 +322,11 @@ async fn serve_client(
     stream_tx: broadcast::Sender<StreamPacket>,
     bootstrap: Arc<StdMutex<Bootstrap>>,
     mut shutdown: watch::Receiver<bool>,
+    diagnostics: Arc<RelayDiagnostics>,
 ) {
+    diagnostics
+        .client_connections
+        .fetch_add(1, Ordering::Relaxed);
     let mut receiver = stream_tx.subscribe();
     let mut scratch = [0u8; 1024];
     let request = tokio::select! {
@@ -332,6 +355,7 @@ async fn serve_client(
                     // A lost encoded packet or new codec headers breaks this
                     // decoder's history. Close so clients join a fresh bootstrap.
                     if packet.generation != snapshot.generation {
+                        diagnostics.events.note("Decoder client rejoining after source headers changed or source packets were lost.");
                         return;
                     }
                     if packet.sequence <= through_sequence || (!ready && !packet.keyframe) {
@@ -346,7 +370,11 @@ async fn serve_client(
                 }
                 // Replaying headers into a decoder with missing references
                 // is unreliable. A new HTTP connection gets a fresh decoder.
-                Err(RecvError::Lagged(_)) => break,
+                Err(RecvError::Lagged(lost)) => {
+                    diagnostics.client_lagged_packets.fetch_add(lost, Ordering::Relaxed);
+                    diagnostics.events.note(format!("Decoder client fell behind by {lost} encoded payloads; closing for a fresh keyframe."));
+                    break;
+                },
                 Err(RecvError::Closed) => break,
             }
         }
@@ -360,6 +388,7 @@ async fn serve(
     stream_tx: broadcast::Sender<StreamPacket>,
     bootstrap: Arc<StdMutex<Bootstrap>>,
     mut shutdown: watch::Receiver<bool>,
+    diagnostics: Arc<RelayDiagnostics>,
 ) {
     let mut clients = JoinSet::new();
     loop {
@@ -374,6 +403,7 @@ async fn serve(
             stream_tx.clone(),
             Arc::clone(&bootstrap),
             shutdown.clone(),
+            Arc::clone(&diagnostics),
         ));
     }
     // Also cancels clients blocked while writing to a slow consumer. JoinSet's
@@ -434,12 +464,14 @@ pub async fn luna_liveview_start(
     let pump_bootstrap = Arc::clone(&bootstrap);
     let pump_tx = stream_tx.clone();
     let pump_shutdown = shutdown.clone();
+    let pump_diagnostics = Arc::clone(&live.diagnostics);
     let mut camera_rx = session.subscribe_stream();
     let pump = tokio::spawn(async move {
         let mut sequence = 0u64;
         loop {
             match camera_rx.recv().await {
                 Ok(payload) => {
+                    *pump_diagnostics.last_packet.lock().unwrap() = Some(Instant::now());
                     sequence = sequence.wrapping_add(1);
                     pump_stats
                         .bytes
@@ -454,7 +486,16 @@ pub async fn luna_liveview_start(
                     let data = Arc::<[u8]>::from(payload);
                     let (keyframe, generation) = {
                         let mut bootstrap = pump_bootstrap.lock().unwrap();
+                        let previous_generation = bootstrap.generation;
                         let keyframe = bootstrap.ingest(sequence, Arc::clone(&data));
+                        if bootstrap.generation != previous_generation {
+                            pump_diagnostics
+                                .header_changes
+                                .fetch_add(1, Ordering::Relaxed);
+                            pump_diagnostics
+                                .events
+                                .note("Camera codec headers changed; discarding the old GOP.");
+                        }
                         (keyframe, bootstrap.generation)
                     };
                     let _ = pump_tx.send(StreamPacket {
@@ -464,7 +505,11 @@ pub async fn luna_liveview_start(
                         data,
                     });
                 }
-                Err(RecvError::Lagged(_)) => {
+                Err(RecvError::Lagged(lost)) => {
+                    pump_diagnostics
+                        .source_lagged_packets
+                        .fetch_add(lost, Ordering::Relaxed);
+                    pump_diagnostics.events.note(format!("Video relay fell behind by {lost} encoded payloads; waiting for a fresh keyframe."));
                     let generation = {
                         let mut bootstrap = pump_bootstrap.lock().unwrap();
                         bootstrap.invalidate_gop();
@@ -477,13 +522,22 @@ pub async fn luna_liveview_start(
                         data: Arc::from([]),
                     });
                 }
-                Err(RecvError::Closed) => break,
+                Err(RecvError::Closed) => {
+                    pump_diagnostics.events.note("Camera video source closed.");
+                    break;
+                }
             }
         }
         let _ = pump_shutdown.send(true);
     });
 
-    let server = tokio::spawn(serve(listener, stream_tx, bootstrap, shutdown_rx));
+    let server = tokio::spawn(serve(
+        listener,
+        stream_tx,
+        bootstrap,
+        shutdown_rx,
+        Arc::clone(&live.diagnostics),
+    ));
     let running = Running {
         port,
         session: Arc::downgrade(&session),
@@ -506,6 +560,7 @@ pub async fn luna_liveview_start(
     }
 
     *guard = Some(running);
+    live.diagnostics.events.note("Camera preview started.");
     Ok(LiveViewInfo {
         url: format!("http://127.0.0.1:{port}/stream"),
         port,
@@ -520,6 +575,9 @@ pub async fn luna_liveview_stop(
     // Dropping Running broadcasts shutdown to every accepted HTTP client before
     // aborting the listener and camera pump.
     live.inner.lock().await.take();
+    live.diagnostics
+        .events
+        .note("Camera preview stopped by the app.");
     if let Some(session) = luna.session().await {
         let _ = session
             .send_command(CODE_STOP_LIVE_STREAM, &[], COMMAND_TIMEOUT)
@@ -531,8 +589,22 @@ pub async fn luna_liveview_stop(
 #[tauri::command]
 pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveViewStats, String> {
     let guard = live.inner.lock().await;
+    let diagnostics = &live.diagnostics;
+    let snapshot = LiveViewStats {
+        source_lagged_packets: diagnostics.source_lagged_packets.load(Ordering::Relaxed),
+        client_lagged_packets: diagnostics.client_lagged_packets.load(Ordering::Relaxed),
+        header_changes: diagnostics.header_changes.load(Ordering::Relaxed),
+        client_connections: diagnostics.client_connections.load(Ordering::Relaxed),
+        last_packet_age_seconds: diagnostics
+            .last_packet
+            .lock()
+            .unwrap()
+            .map(|at| at.elapsed().as_secs_f64()),
+        events: diagnostics.events.snapshot(),
+        ..LiveViewStats::default()
+    };
     let Some(running) = guard.as_ref() else {
-        return Ok(LiveViewStats::default());
+        return Ok(snapshot);
     };
     let first = running.stats.first_bytes.lock().unwrap().clone();
     let seconds = running
@@ -547,6 +619,7 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
         packets: running.stats.packets.load(Ordering::Relaxed),
         first_bytes_hex: first.iter().map(|b| format!("{b:02x}")).collect(),
         seconds,
+        ..snapshot
     })
 }
 
@@ -657,7 +730,13 @@ mod tests {
         let (stream_tx, _) = broadcast::channel(4);
         let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
         let (shutdown, shutdown_rx) = watch::channel(false);
-        let server = tokio::spawn(serve(listener, stream_tx.clone(), bootstrap, shutdown_rx));
+        let server = tokio::spawn(serve(
+            listener,
+            stream_tx.clone(),
+            bootstrap,
+            shutdown_rx,
+            Arc::new(RelayDiagnostics::default()),
+        ));
         let mut client = TcpStream::connect(address).await.unwrap();
         client
             .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
@@ -689,7 +768,13 @@ mod tests {
         let (stream_tx, _) = broadcast::channel(4);
         let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
         let (shutdown, shutdown_rx) = watch::channel(false);
-        let server = tokio::spawn(serve(listener, stream_tx, bootstrap, shutdown_rx));
+        let server = tokio::spawn(serve(
+            listener,
+            stream_tx,
+            bootstrap,
+            shutdown_rx,
+            Arc::new(RelayDiagnostics::default()),
+        ));
 
         let mut client = TcpStream::connect(address).await.unwrap();
         client
@@ -710,6 +795,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn slow_decoder_gets_a_clean_close_and_a_recorded_lag_reason() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stream_tx, _) = broadcast::channel(1);
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let diagnostics = Arc::new(RelayDiagnostics::default());
+        let server = tokio::spawn(serve(
+            listener,
+            stream_tx.clone(),
+            Arc::default(),
+            shutdown_rx,
+            Arc::clone(&diagnostics),
+        ));
+        let mut client = TcpStream::connect(address).await.unwrap();
+        client
+            .write_all(b"GET /stream HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = [0; 256];
+        assert!(client.read(&mut response).await.unwrap() > 0);
+        for sequence in 1..=3 {
+            assert!(stream_tx
+                .send(StreamPacket {
+                    generation: 0,
+                    sequence,
+                    keyframe: true,
+                    data: h264(5, 1),
+                })
+                .is_ok());
+        }
+        let closed = tokio::time::timeout(Duration::from_secs(1), client.read(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(closed, 0);
+        assert_eq!(diagnostics.client_lagged_packets.load(Ordering::Relaxed), 2);
+        assert!(diagnostics
+            .events
+            .snapshot()
+            .iter()
+            .any(|event| event.message.contains("fell behind")));
+        shutdown.send(true).unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn aborting_listener_also_releases_its_client_tasks() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -720,6 +851,7 @@ mod tests {
             stream_tx,
             Arc::new(StdMutex::new(Bootstrap::default())),
             shutdown_rx,
+            Arc::new(RelayDiagnostics::default()),
         ));
         let mut client = TcpStream::connect(address).await.unwrap();
         client

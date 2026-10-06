@@ -1,3 +1,4 @@
+mod diagnostics;
 mod liveview;
 mod luna;
 mod webcam;
@@ -16,6 +17,7 @@ pub fn run() {
             luna::luna_connect,
             luna::luna_disconnect,
             luna::luna_status,
+            luna::luna_connection_diagnostics,
             luna::luna_delete_files,
             luna::luna_command,
             liveview::luna_liveview_start,

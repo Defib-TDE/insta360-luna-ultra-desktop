@@ -3,6 +3,7 @@ import { resetCameraTransport, setCameraTransport } from "~/utils/transport";
 import { makeFakeTransport } from "../helpers/fakeTransport";
 import { makeMediaItem } from "../helpers/media";
 import { mountComposable } from "./harness";
+import { disarmCameraHealth, reportCameraFailure } from "~/utils/cameraHealth";
 
 describe("useCamera", () => {
   beforeEach(() => {
@@ -11,6 +12,8 @@ describe("useCamera", () => {
   });
 
   afterEach(() => {
+    disarmCameraHealth();
+    vi.useRealTimers();
     resetCameraTransport();
     clearNuxtState(
       [
@@ -21,9 +24,53 @@ describe("useCamera", () => {
         "camera-library-loading",
         "camera-want-connection",
         "camera-retry-attempt",
+        "camera-attempt-generation",
       ],
       { reset: true },
     );
+  });
+
+  it("preserves automatic recovery after a failed HTTP health check", async () => {
+    const transport = makeFakeTransport({ probe: vi.fn(async () => false) });
+    setCameraTransport(transport);
+    const camera = await mountComposable(() => useCamera());
+    await camera.connect();
+    vi.useFakeTimers();
+    reportCameraFailure();
+    reportCameraFailure();
+    reportCameraFailure();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(camera.isConnected.value).toBe(false);
+    expect(camera.wantConnection.value).toBe(true);
+    expect(camera.error.value).toContain("Reconnecting");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(transport.connect).toHaveBeenCalledTimes(2);
+    expect(camera.isConnected.value).toBe(true);
+    await camera.disconnect();
+    await vi.advanceTimersByTimeAsync(16000);
+    expect(transport.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not revive a connection that finishes after manual Disconnect", async () => {
+    const transport = makeFakeTransport();
+    const info = await transport.status();
+    let release!: (value: NonNullable<typeof info>) => void;
+    transport.connect = vi.fn(
+      () =>
+        new Promise<NonNullable<typeof info>>((resolve) => {
+          release = resolve;
+        }),
+    );
+    setCameraTransport(transport);
+    const camera = await mountComposable(() => useCamera());
+    const pending = camera.connect();
+    await vi.waitFor(() => expect(transport.connect).toHaveBeenCalledOnce());
+    await camera.disconnect();
+    release(info!);
+    await pending;
+    expect(camera.isConnected.value).toBe(false);
+    expect(camera.wantConnection.value).toBe(false);
+    expect(transport.listMedia).not.toHaveBeenCalled();
   });
 
   it("connects through the active transport and loads the library", async () => {

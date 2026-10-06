@@ -20,6 +20,40 @@ describe("cameraHealth", () => {
     disarmCameraHealth();
   });
 
+  it("ignores a failed probe if a camera response arrived while it was open", async () => {
+    let release!: (alive: boolean) => void;
+    const onDead = vi.fn();
+    armCameraHealth(
+      onDead,
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    reportCameraSuccess();
+    release(false);
+    await flush();
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
+  it("ignores an old verdict even if a new session uses the same callback", async () => {
+    let release!: (alive: boolean) => void;
+    const onDead = vi.fn();
+    armCameraHealth(
+      onDead,
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    armCameraHealth(onDead, () => Promise.resolve(true));
+    release(false);
+    await flush();
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
   it("fires once after three consecutive failures", async () => {
     const onDead = vi.fn();
     armCameraHealth(onDead, deadProbe);
