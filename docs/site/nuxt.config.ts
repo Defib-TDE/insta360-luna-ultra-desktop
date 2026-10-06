@@ -112,6 +112,7 @@ export default defineNuxtConfig({
   // in the static-hosting production topology, so it can't be trusted as a
   // verification target here.)
   routeRules: {
+    "/studio": { redirect: `${baseURL}demo/studio` },
     "/camera": { redirect: `${baseURL}demo/camera` },
     "/gallery": { redirect: `${baseURL}demo/gallery` },
     "/downloads": { redirect: `${baseURL}demo/downloads` },

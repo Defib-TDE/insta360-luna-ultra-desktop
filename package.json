@@ -5,6 +5,9 @@
   "workspaces": [
     "docs/site"
   ],
+  "overrides": {
+    "simple-git": "4.0.2"
+  },
   "type": "module",
   "scripts": {
     "build": "tauri build",
@@ -54,5 +57,8 @@
       "oxfmt",
       "oxlint --fix --deny-warnings"
     ]
+  },
+  "patchedDependencies": {
+    "@nuxt/devtools@3.4.2": "patches/@nuxt%2Fdevtools@3.4.2.patch"
   }
 }

@@ -49,7 +49,14 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - Uploaded reports remain outside Git; only these findings are recorded.
   Local validation passed 338 unit, 62 Nuxt and 31 Rust tests, including the
   real Node mock-server integration. Typecheck, lint, frontend generation and
-  optimized Linux native build passed. Windows CI for this follow-up is pending.
+  optimized Linux native build passed. Commit `3fac72b` passed native Windows
+  tests, diagnostics, embedded engine launch and MSI/NSIS creation in
+  [CI 37402935597](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37402935597).
+  That run failed only the critical JavaScript audit after two newly published
+  Git tooling advisories. The follow-up pins patched Git tooling with a one-line
+  stable Nuxt compatibility patch; see [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md).
+  It also restores the Studio link in the documentation demo. Final CI for
+  these dependency/demo changes is pending. No installers were published.
 
 ## Video interruption investigation (2026-10-05)
 

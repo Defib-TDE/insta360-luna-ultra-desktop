@@ -1,4 +1,4 @@
-const APP_PATHS = new Set(["/", "/camera", "/gallery", "/downloads", "/settings"]);
+const APP_PATHS = new Set(["/", "/studio", "/camera", "/gallery", "/downloads", "/settings"]);
 
 /**
  * The demo runs the desktop app's real pages, which hardcode root-level links
