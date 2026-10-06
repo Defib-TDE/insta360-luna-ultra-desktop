@@ -55,8 +55,17 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   That run failed only the critical JavaScript audit after two newly published
   Git tooling advisories. The follow-up pins patched Git tooling with a one-line
   stable Nuxt compatibility patch; see [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md).
-  It also restores the Studio link in the documentation demo. Final CI for
-  these dependency/demo changes is pending. No installers were published.
+  It also restores the Studio link in the documentation demo. Commit `e7717cd`
+  passed [CI 37403928221](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37403928221):
+  338 unit, 62 Nuxt, 31 native tests on Linux and Windows, nine Python
+  simulations, typecheck, lint, frontend generation, dependency audit gates,
+  Windows inventory, embedded engine launch and MSI/NSIS creation. Local docs
+  generation also passed with zero link errors. Nine lower-severity JavaScript
+  findings remain documented in the audit baseline. No installers were published.
+- Next hardware check: keep Slow-mo landscape and tested baseline fixed for a
+  10–15 minute webcam run. Record any recovery times and export the connection
+  report before closing the app. This is still required; automated tests and
+  installer creation do not establish a dropout-free real-camera session.
 
 ## Video interruption investigation (2026-10-05)
 

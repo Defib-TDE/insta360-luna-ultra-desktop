@@ -25,7 +25,7 @@ Only primary preview resolution changes; bitrate and secondary-stream fields
 remain at their working values. No recording-resolution or orientation setter
 is sent. There is no named 720p60 enum in this schema, so none is fabricated.
 The source selector starts at baseline on every app launch. Stop webcam before
-changing it. Rejected or silent requests fall back to baseline; an experimental
+changing it. Failed or silent requests fall back to baseline; an experimental
 decoder startup failure also restores baseline. A request that produces a lower
 quality stays visible as a mismatch. **Use tested baseline** restores it manually.
 If the control connection drops during an experimental selection, recovery also
