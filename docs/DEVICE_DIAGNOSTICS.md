@@ -109,6 +109,10 @@ decoder read retries over about 35 seconds and no control-session reconnect.
 There is no logged source/client backlog or codec-header change. It was collected
 after recovery, so its fresh arrival ages do not describe the pause itself.
 This points to a camera display/power interaction but does not prove its mechanism.
+The user subsequently confirmed **90-second Screen Auto Sleep** and **3-minute
+Auto Power Off**. These timings are consistent with the interruption. They do
+not isolate the display timer from the power timer; authorization keepalives do
+not guarantee that firmware treats the session as user activity.
 
 The [official Luna settings guide](https://onlinemanual.insta360.com/lunaultra/en-us/operation-tutorials/system-operation/auto-power-off)
 documents **Settings → General → Auto Power Off → Never** and a separate

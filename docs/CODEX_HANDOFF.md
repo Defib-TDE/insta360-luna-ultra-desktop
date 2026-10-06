@@ -31,6 +31,12 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   Screen Auto Sleep (duration choices unspecified). Recording with the screen
   off is documented; our Wi-Fi preview behavior and a remote wake setter are
   unverified. Never write the schema's standby option assuming it controls this.
+- User then confirmed the current camera settings: **Screen Auto Sleep 90
+  seconds; Auto Power Off 3 minutes**. These timings support the display/power
+  hypothesis but do not isolate which setting is responsible. Authorization
+  keepalives do not establish that firmware treats the connection as activity.
+  First disable/extend both timers for a stable run. A later comparison can
+  restore only screen sleep to 90 seconds while leaving power-off at Never.
 - Added native video-silence recovery on the existing session: after 12 seconds
   without video, responsive control permits two preview Stop/Start attempts,
   spaced at least 30 seconds apart. Listener/URL, profile and camera mode are
@@ -48,7 +54,12 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - Local validation passed 338 unit, 62 Nuxt and 35 native tests, typecheck,
   lint, app/docs generation (zero docs link errors), optimized native build and
   the critical dependency audit. Nine lower-severity JavaScript findings remain
-  in the existing baseline. Windows packaging validation is pending.
+  in the existing baseline. Commit `b97063d` passed
+  [CI 37406627322](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37406627322):
+  frontend checks, native Linux/Windows tests, dependency audit gates, Windows
+  inventory, embedded engine launch, nine Windows Python simulations and
+  MSI/NSIS creation. No installers were published. Physical screen-sleep
+  recovery and the power-setting comparison remain user-side hardware tests.
 
 ## Hardware source-profile follow-up (2026-10-05)
 
