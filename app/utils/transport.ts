@@ -1,5 +1,6 @@
 import type { CameraInfo, ConnectionDiagnostics, LiveViewStats, MediaItem } from "~/types/media";
 import { lunaClient } from "~/utils/lunaClient";
+import type { PreviewProfileId } from "~/utils/previewProfiles";
 
 /**
  * Everything the UI needs from a camera. The desktop app supplies the real
@@ -14,7 +15,7 @@ export interface CameraTransport {
   listMedia(host: string): Promise<MediaItem[]>;
   deleteFiles(cameraPaths: string[]): Promise<void>;
   command(code: number, body: Uint8Array): Promise<Uint8Array>;
-  liveViewStart(): Promise<{ url: string; port: number }>;
+  liveViewStart(profile?: PreviewProfileId): Promise<{ url: string; port: number }>;
   liveViewStop(): Promise<void>;
   liveViewStats(): Promise<LiveViewStats>;
   /** Local diagnostics; optional for browser demo transports. No camera queries. */

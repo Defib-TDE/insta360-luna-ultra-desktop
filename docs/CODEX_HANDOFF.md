@@ -17,6 +17,31 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 
 ## Video interruption investigation (2026-10-05)
 
+- Reliability commit `6ca692f` passed [CI 37393927497](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/37393927497): frontend, Linux native tests/audit, Windows native tests, inventory smoke, staged helper, MSI/NSIS builds and six Python simulations. No installer artifacts were published.
+- The user then authorized selectable native source profiles or a verification
+  script. Added baseline plus 1080p30/60 and 4K30/60 requests using named schema
+  enums, changing only primary preview resolution. No 720p60 enum exists here.
+  Higher choices are experimental, never persisted, and compared against
+  actual decoded source. 60fps source choices use 60fps virtual output too;
+  smaller delivered sources still repeat/upscale rather than gain detail.
+- Failed/silent experimental startup and decoder first-frame failure restore
+  the tested baseline and its 30fps publisher; ignored-but-decodable requests
+  remain visible as a delivered-quality mismatch. Fixed camera mode is supported
+  by turning Match camera mode off. No higher preview candidate is hardware-verified yet.
+- The external probe adds warmup, expected-profile comparisons and a total
+  decoder deadline. It joins the app's selected stream; it does not change the
+  camera profile itself. See [SOURCE_PROFILE_TESTS.md](SOURCE_PROFILE_TESTS.md).
+  Synthetic HEVC decoding measured 320×180/~29.8fps after warmup and correctly
+  rejected a baseline-resolution match; a real decoder blocked inside open/read
+  exited at its short probe deadline. These were generated/local streams only.
+- Source-profile validation: 338 unit, 59 Nuxt, 29 Rust and nine Python tests
+  passed locally, along with typecheck, lint, generated frontend and optimized
+  native build. Chromium simulated a native 1080p60 request, 60fps publication
+  and automatic baseline recovery after a rejected 4K60 request while output
+  was stopped. The minimum 960px window had no horizontal overflow or page
+  errors. Studio preview ownership accepts trailing-slash routes too. Reports
+  do not associate measurements from stopped output with a newly selected source.
+
 - User reports intermittent video/webcam recovery with Luna about five feet
   away, directly connected over Wi-Fi. Windows stayed joined to Luna's Wi-Fi;
   the user identifies video recovery rather than a Windows disconnection.
@@ -62,7 +87,8 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   960×640 exported an offline report with native recovery evidence, no camera
   commands, page errors or horizontal overflow. Critical production dependency
   audit passed (five findings below the configured critical threshold remain).
-  Windows CI and the user's real-camera timed run remain pending at this commit.
+  Windows CI subsequently passed as linked above; the user's real-camera timed
+  run remains pending.
   This increment does not establish a resolved hardware dropout, native higher
   quality, camera audio or USB video.
 

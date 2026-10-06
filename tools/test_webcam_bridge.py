@@ -27,10 +27,45 @@ class BridgeTests(unittest.TestCase):
         self.assertIs(frames.get_nowait(), second)
 
     def test_cli_rejects_unbounded_timeouts_and_rates(self):
-        for option in ["--startup-timeout", "--read-timeout", "--fps"]:
+        for option in ["--startup-timeout", "--read-timeout", "--probe-timeout", "--fps"]:
             for value in ["0", "-1", "nan", "inf"]:
                 with self.subTest(option=option, value=value), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                     bridge.parse_args([option, value])
+
+    def test_probe_excludes_warmup_and_verifies_actual_cadence_instead_of_raw_fps_guess(self):
+        frame = SimpleNamespace(width=1280, height=720)
+        container = SimpleNamespace(streams=SimpleNamespace(video=[SimpleNamespace(average_rate=25, base_rate=None, guessed_rate=None)]), decode=lambda **_: iter([frame] * 5))
+        args = bridge.parse_args(["--probe-only", "--probe-frames", "3", "--warmup-seconds", "1", "--expect-profile", "baseline"])
+        with patch.object(bridge, "open_stream", return_value=contextlib.nullcontext(container)), patch.object(bridge.time, "monotonic", side_effect=[0, .1, .2, 1.2, 1.2 + 1/30, 1.2 + 2/30, 1.3]):
+            result = bridge.probe_result(None, args)
+        self.assertEqual(result["warmupFrames"], 2)
+        self.assertEqual(result["decodedFrames"], 3)
+        self.assertEqual(result["fps"], 25)
+        self.assertEqual(result["observedDecodeFps"], 30)
+        self.assertEqual(result["verification"]["status"], "matched_sample")
+
+    def test_probe_marks_an_ignored_resolution_request_and_returns_nonzero(self):
+        args = bridge.parse_args(["--probe-only", "--probe-frames", "3", "--expect-profile", "4k60"])
+        measured = {"decodedFrames": 3, "width": 1280, "height": 720, "verification": {"status": "different_output"}}
+        with patch.object(bridge, "probe_result", return_value=measured), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(bridge.probe(None, args), 2)
+
+    def test_probe_deadline_bounds_a_decoder_that_never_returns(self):
+        release = threading.Event()
+        finished = threading.Event()
+        def blocked(*_):
+            release.wait(1)
+            finished.set()
+            return {}
+        stdout = io.StringIO()
+        args = bridge.parse_args(["--probe-only", "--probe-timeout", ".02"])
+        try:
+            with patch.object(bridge, "probe_result", blocked), contextlib.redirect_stdout(stdout):
+                self.assertEqual(bridge.probe(None, args), 1)
+            self.assertEqual(json.loads(stdout.getvalue())["error"], "probe_timeout")
+        finally:
+            release.set()
+            self.assertTrue(finished.wait(1))
 
     def test_first_frame_deadline_releases_decoder_without_opening_a_camera(self):
         stopped = threading.Event()

@@ -12,6 +12,12 @@ param(
     [switch]$Mirror,
     [ValidateRange(1, 100000)]
     [int]$ProbeFrames = 30,
+    [ValidateRange(0, 60)]
+    [double]$WarmupSeconds = 0,
+    [ValidateRange(1, 120)]
+    [double]$ProbeTimeout = 45,
+    [ValidateSet("baseline", "1080p30", "1080p60", "4k30", "4k60")]
+    [string]$ExpectProfile,
     [switch]$ProbeOnly
 )
 
@@ -44,8 +50,9 @@ if ($Width -gt 0) { $BridgeArgs += @("--width", "$Width") }
 if ($Height -gt 0) { $BridgeArgs += @("--height", "$Height") }
 if ($Mirror) { $BridgeArgs += "--mirror" }
 if ($ProbeOnly) {
-    $BridgeArgs += @("--probe-only", "--probe-frames", "$ProbeFrames")
+    $BridgeArgs += @("--probe-only", "--probe-frames", "$ProbeFrames", "--warmup-seconds", "$WarmupSeconds", "--probe-timeout", "$ProbeTimeout")
 }
+if ($ExpectProfile) { $BridgeArgs += @("--expect-profile", $ExpectProfile) }
 
 & $Python @BridgeArgs
 exit $LASTEXITCODE

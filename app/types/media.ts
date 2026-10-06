@@ -63,6 +63,7 @@ export interface LiveViewStats {
   clientConnections?: number;
   lastPacketAgeSeconds?: number | null;
   events?: DiagnosticEvent[];
+  requestedProfile?: import("~/utils/previewProfiles").PreviewProfileId | null;
 }
 
 export interface DiagnosticEvent {

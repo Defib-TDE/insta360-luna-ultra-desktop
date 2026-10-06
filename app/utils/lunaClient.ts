@@ -9,6 +9,7 @@ import { isTauri } from "~/utils/saveFile";
 import { buildMediaItems, entriesFromPaths } from "~/utils/lunaIndex";
 import { reportCameraFailure, reportCameraSuccess } from "~/utils/cameraHealth";
 import { concatBytes, decodeRaw, encodeTag, encodeVarint, WIRE_VARINT } from "~/utils/protobuf";
+import type { PreviewProfileId } from "~/utils/previewProfiles";
 
 /** Storage roots the Luna Ultra exposes over HTTP, default first. */
 const STORAGE_ROOTS: Array<{ path: string; id: MediaStorage }> = [
@@ -158,8 +159,10 @@ export const lunaClient = {
     return new Uint8Array(response);
   },
 
-  async liveViewStart(): Promise<{ url: string; port: number }> {
-    return tauriInvoke<{ url: string; port: number }>("luna_liveview_start");
+  async liveViewStart(
+    profile: PreviewProfileId = "baseline",
+  ): Promise<{ url: string; port: number }> {
+    return tauriInvoke<{ url: string; port: number }>("luna_liveview_start", { profile });
   },
 
   async liveViewStop(): Promise<void> {

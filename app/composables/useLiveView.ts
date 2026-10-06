@@ -1,5 +1,6 @@
 import type { LiveViewStats } from "~/types/media";
 import { getCameraTransport } from "~/utils/transport";
+import { previewProfile, type PreviewProfileId } from "~/utils/previewProfiles";
 
 export type LiveTransport = "mjpeg" | "annexb";
 const FIRST_BYTE_TIMEOUT_MS = 6000;
@@ -7,6 +8,7 @@ interface Runtime {
   queue: Promise<void>;
   version: number;
   retries: number;
+  profile?: PreviewProfileId;
   timer?: ReturnType<typeof setTimeout>;
 }
 const runtimes = new WeakMap<object, Runtime>();
@@ -28,6 +30,9 @@ export function useLiveView() {
   const failed = useState("liveview-failed", () => false);
   const revision = useState("liveview-revision", () => 0);
   const diagnostics = useState<string[]>("liveview-diagnostics", () => []);
+  // Experimental source requests are deliberately not persisted across launches.
+  const sourceProfile = useState<PreviewProfileId>("liveview-source-profile", () => "baseline");
+  const sourceRequest = computed(() => previewProfile(sourceProfile.value));
   const note = (line: string) => {
     diagnostics.value = [...diagnostics.value, line].slice(-80);
   };
@@ -43,6 +48,7 @@ export function useLiveView() {
     active.value = false;
     transport.value = null;
     streamUrl.value = null;
+    runtime.profile = undefined;
   }
   function resetRecovery() {
     failed.value = false;
@@ -54,7 +60,13 @@ export function useLiveView() {
       .catch(() => {});
 
   async function watchFirstBytes(version: number, elementary: boolean) {
-    const current = () => runtime.version === version && active.value && isConnected.value;
+    const profile = runtime.profile;
+    const current = () =>
+      runtime.version === version &&
+      active.value &&
+      isConnected.value &&
+      runtime.profile === profile &&
+      sourceProfile.value === profile;
     if (!current()) return;
     const stats = await getCameraTransport()
       .liveViewStats()
@@ -70,7 +82,10 @@ export function useLiveView() {
     runtime.version += 1;
     if (runtime.retries < 1) {
       runtime.retries += 1;
-      note("No video bytes yet. Restarting preview once.");
+      if (profile && profile !== "baseline") {
+        sourceProfile.value = "baseline";
+        note("Experimental request sent no video. Restoring the tested baseline.");
+      } else note("No video bytes yet. Restarting preview once.");
       const recoveryVersion = runtime.version;
       await enqueue(stopNative);
       if (!isConnected.value || runtime.version !== recoveryVersion) return;
@@ -86,9 +101,19 @@ export function useLiveView() {
 
   function start({ elementary = false } = {}) {
     const requestedVersion = runtime.version;
+    const requestedProfile = sourceProfile.value;
+    elementary ||= requestedProfile !== "baseline";
+    let fallback = false;
     return enqueue(async () => {
       if (requestedVersion !== runtime.version || failed.value) return;
-      if (active.value && (!elementary || transport.value === "annexb")) return;
+      if (sourceProfile.value !== requestedProfile) return;
+      if (active.value && runtime.profile !== requestedProfile) resetRecovery();
+      if (
+        active.value &&
+        runtime.profile === requestedProfile &&
+        (!elementary || transport.value === "annexb")
+      )
+        return;
       if (!isConnected.value) {
         error.value = "Connect to the camera first.";
         return;
@@ -111,17 +136,23 @@ export function useLiveView() {
           transport.value = "mjpeg";
           streamUrl.value = osc;
           active.value = true;
+          runtime.profile = requestedProfile;
           revision.value += 1;
           return;
         }
         note("Starting the control-session video stream.");
-        const info = await getCameraTransport().liveViewStart();
+        const info = await getCameraTransport().liveViewStart(requestedProfile);
         if (!current()) return;
+        if (sourceProfile.value !== requestedProfile) {
+          await stopNative();
+          return;
+        }
         note("Camera accepted START_LIVE_STREAM. Serving on port " + info.port + ".");
         note("External decoder URL: " + info.url);
         transport.value = "annexb";
         streamUrl.value = info.url;
         active.value = true;
+        runtime.profile = requestedProfile;
         revision.value += 1;
         runtime.timer = setTimeout(
           () => void watchFirstBytes(version, elementary),
@@ -131,12 +162,20 @@ export function useLiveView() {
         if (!current()) return;
         error.value = cause instanceof Error ? cause.message : String(cause);
         note("Failed: " + error.value);
-        failed.value = true;
+        if (requestedProfile !== "baseline") {
+          sourceProfile.value = "baseline";
+          note("Experimental request failed. Restoring the tested baseline.");
+          runtime.retries = 1;
+          fallback = true;
+        } else failed.value = true;
         clearState();
         await stopNative();
       } finally {
         if (runtime.version === version) starting.value = false;
       }
+    }).then(async () => {
+      if (fallback && requestedVersion === runtime.version && isConnected.value)
+        await start({ elementary: true });
     });
   }
 
@@ -166,6 +205,8 @@ export function useLiveView() {
     failed,
     revision,
     diagnostics,
+    sourceProfile,
+    sourceRequest,
     note,
     start,
     stop,

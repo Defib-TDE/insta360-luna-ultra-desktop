@@ -49,6 +49,11 @@ one-file so the app supervises the actual process, not an extraction child.
 3. Choose Landscape, Portrait or upscaled Full HD. Start with Landscape 720p30,
    the conservative general-purpose preset. Source dimensions and measured
    cadence appear once the decoder is running.
+   **Native camera source** separately selects the camera's preview request.
+   Keep the tested baseline for normal use; 1080p30/60 and 4K30/60 are explicit
+   experimental choices. A 60fps source choice also uses 60fps virtual output.
+   Follow [SOURCE_PROFILE_TESTS.md](SOURCE_PROFILE_TESTS.md) for fixed-mode
+   measurements, the warmup-aware probe and baseline recovery.
 4. Leave **Match camera mode** on to prepare the tested source mode, or turn it
    off to **Keep my camera settings**. Landscape and Full HD currently select
    **Slow-mo**; Portrait selects **Video**. These match the measured configuration,
@@ -95,8 +100,10 @@ later phases, not features in this build.
 
 ## Camera quality, portable networking and exams
 
-Full HD scales the landscape source to virtual-camera output size. Mode matching
-is now implemented; native preview-resolution negotiation is still planned.
+Full HD uses a 1920×1080 output shape, scaling when source size differs. Mode
+matching is implemented, and native preview requests now have experimental
+profiles. Their availability is determined by measured delivered video, not by
+the selector's label; all higher native profiles still need hardware testing.
 See [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) for evidence,
 mode/orientation recommendations and the hardware test gates.
 

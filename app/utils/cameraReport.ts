@@ -33,6 +33,7 @@ export async function collectCameraReport(
     outputWidth: number;
     outputHeight: number;
     outputFps: number;
+    requestedProfile?: import("~/utils/previewProfiles").PreviewProfileId;
   },
 ) {
   const current = await readCameraMode();

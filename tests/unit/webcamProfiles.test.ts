@@ -7,10 +7,10 @@ import {
 } from "../../app/utils/webcamProfiles";
 
 describe("webcam profiles", () => {
-  it("uses conservative 30fps profiles, labels scaling and preserves portrait orientation", () => {
+  it("uses conservative output shapes and preserves portrait orientation", () => {
     expect(WEBCAM_PROFILES.every((profile) => profile.fps === 30)).toBe(true);
     expect(webcamProfile("portrait")).toMatchObject({ width: 720, height: 1280 });
-    expect(webcamProfile("fullhd").detail).toContain("Upscaled");
+    expect(webcamProfile("fullhd").detail).toContain("output");
     expect(webcamProfile("unknown").id).toBe("landscape");
   });
   it("initializes source and output metrics independently", () => {

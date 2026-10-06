@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -34,12 +34,40 @@ const MAX_BOOTSTRAP_BYTES: usize = 16 * 1024 * 1024;
 ///   2 enableVideo, 6 videoBitrate, 7 resolution, 8 enableGyro,
 ///   9 videoBitrate1, 10 resolution1
 /// Resolution 9 is RES_1440_720P30 and 18 is RES_480_240P30, matching the
-/// known-good capture. Values are deliberately identical to that capture so
-/// that a failure here means the camera disagrees, not that we guessed.
-fn build_start_live_stream_body() -> Vec<u8> {
+/// known-good capture. The baseline preserves that request exactly. Named
+/// experiments change only the primary resolution; schema presence is not a
+/// guarantee that Luna supports the requested preview.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+pub enum PreviewProfile {
+    #[default]
+    #[serde(rename = "baseline")]
+    Baseline,
+    #[serde(rename = "1080p30")]
+    FullHd30,
+    #[serde(rename = "1080p60")]
+    FullHd60,
+    #[serde(rename = "4k30")]
+    Uhd30,
+    #[serde(rename = "4k60")]
+    Uhd60,
+}
+
+impl PreviewProfile {
+    fn resolution(self) -> u32 {
+        match self {
+            Self::Baseline => 9,
+            Self::FullHd30 => 29,
+            Self::FullHd60 => 40,
+            Self::Uhd30 => 24,
+            Self::Uhd60 => 23,
+        }
+    }
+}
+
+fn build_start_live_stream_body(profile: PreviewProfile) -> Vec<u8> {
     let mut body = wire_field_varint(2, 1);
     body.extend(wire_field_varint(6, 40));
-    body.extend(wire_field_varint(7, 9));
+    body.extend(wire_field_varint(7, profile.resolution()));
     body.extend(wire_field_varint(8, 1));
     body.extend(wire_field_varint(9, 40));
     body.extend(wire_field_varint(10, 18));
@@ -260,6 +288,7 @@ struct RelayDiagnostics {
 
 struct Running {
     port: u16,
+    profile: PreviewProfile,
     session: Weak<Session>,
     stats: Arc<Stats>,
     shutdown: watch::Sender<bool>,
@@ -305,6 +334,7 @@ pub struct LiveViewStats {
     pub client_connections: u64,
     pub last_packet_age_seconds: Option<f64>,
     pub events: Vec<DiagnosticEvent>,
+    pub requested_profile: Option<PreviewProfile>,
 }
 
 async fn write_bootstrap(
@@ -429,7 +459,9 @@ async fn bind_listener() -> Result<TcpListener, String> {
 pub async fn luna_liveview_start(
     luna: State<'_, LunaState>,
     live: State<'_, LiveViewState>,
+    profile: Option<PreviewProfile>,
 ) -> Result<LiveViewInfo, String> {
+    let profile = profile.unwrap_or_default();
     let session = luna
         .session()
         .await
@@ -438,6 +470,9 @@ pub async fn luna_liveview_start(
     let mut guard = live.inner.lock().await;
     if let Some(running) = guard.as_ref() {
         if running.belongs_to(&session) {
+            if running.profile != profile {
+                return Err("Stop the current preview before changing source profile.".into());
+            }
             return Ok(LiveViewInfo {
                 url: format!("http://127.0.0.1:{}/stream", running.port),
                 port: running.port,
@@ -540,6 +575,7 @@ pub async fn luna_liveview_start(
     ));
     let running = Running {
         port,
+        profile,
         session: Arc::downgrade(&session),
         stats,
         shutdown,
@@ -550,7 +586,7 @@ pub async fn luna_liveview_start(
     if let Err(error) = session
         .send_command(
             CODE_START_LIVE_STREAM,
-            &build_start_live_stream_body(),
+            &build_start_live_stream_body(profile),
             COMMAND_TIMEOUT,
         )
         .await
@@ -560,7 +596,7 @@ pub async fn luna_liveview_start(
     }
 
     *guard = Some(running);
-    live.diagnostics.events.note("Camera preview started.");
+    live.diagnostics.events.note(format!("Camera preview request {profile:?} accepted; delivered quality must be decoded and measured."));
     Ok(LiveViewInfo {
         url: format!("http://127.0.0.1:{port}/stream"),
         port,
@@ -619,6 +655,7 @@ pub async fn luna_liveview_stats(live: State<'_, LiveViewState>) -> Result<LiveV
         packets: running.stats.packets.load(Ordering::Relaxed),
         first_bytes_hex: first.iter().map(|b| format!("{b:02x}")).collect(),
         seconds,
+        requested_profile: Some(running.profile),
         ..snapshot
     })
 }
@@ -639,7 +676,27 @@ mod tests {
         let expected: Vec<u8> = vec![
             0x10, 0x01, 0x30, 0x28, 0x38, 0x09, 0x40, 0x01, 0x48, 0x28, 0x50, 0x12,
         ];
-        assert_eq!(build_start_live_stream_body(), expected);
+        assert_eq!(
+            build_start_live_stream_body(PreviewProfile::Baseline),
+            expected
+        );
+    }
+
+    #[test]
+    fn experimental_requests_change_only_primary_resolution_and_reject_unknown_profiles() {
+        let baseline = build_start_live_stream_body(PreviewProfile::Baseline);
+        for (profile, resolution) in [
+            (PreviewProfile::FullHd30, 29),
+            (PreviewProfile::FullHd60, 40),
+            (PreviewProfile::Uhd30, 24),
+            (PreviewProfile::Uhd60, 23),
+        ] {
+            let mut expected = baseline.clone();
+            expected[5] = resolution;
+            assert_eq!(build_start_live_stream_body(profile), expected);
+        }
+        assert!(serde_json::from_str::<PreviewProfile>("\"arbitrary\"").is_err());
+        assert_eq!(PreviewProfile::default(), PreviewProfile::Baseline);
     }
 
     #[test]

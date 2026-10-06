@@ -65,6 +65,7 @@ describe("Studio session ownership", () => {
   afterEach(async () => {
     wrapper.unmount();
     await vm.live.stop();
+    vi.useRealTimers();
     resetCameraTransport();
     resetWebcamClient();
     clearNuxtState(undefined, { reset: true });
@@ -78,11 +79,70 @@ describe("Studio session ownership", () => {
     await vi.waitFor(() => expect(client.start).toHaveBeenCalledOnce());
   }
 
+  it("requests experimental source quality and publishes 60fps without changing the fixed camera mode", async () => {
+    vm.live.sourceProfile.value = "1080p60";
+    vm.webcam.profileId.value = "fullhd";
+    await connectAndStart();
+    expect(transport.liveViewStart).toHaveBeenCalledWith("1080p60");
+    expect(client.start).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 1920, height: 1080, fps: 60 }),
+    );
+    expect(transport.command).not.toHaveBeenCalled();
+  });
+
+  it("also restores the publisher frame rate when a silent 60fps request falls back to baseline", async () => {
+    vi.useFakeTimers();
+    vm.live.sourceProfile.value = "1080p60";
+    await connectAndStart();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(vm.live.sourceProfile.value).toBe("baseline");
+    expect(client.start).toHaveBeenLastCalledWith(expect.objectContaining({ fps: 30 }));
+  });
+
+  it("restores baseline when experimental bytes arrive but the decoder cannot start output", async () => {
+    vm.live.sourceProfile.value = "1080p60";
+    client.start = vi.fn(async (options) => {
+      status = {
+        ...initialWebcamStatus(),
+        phase: options.fps === 60 ? "error" : "publishing",
+        url: options.url,
+        error: options.fps === 60 ? "No decoded video before startup deadline" : null,
+      };
+    });
+    vm.camera.wantConnection.value = true;
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    vm.webcam.start();
+    await vi.waitFor(() => expect(client.start).toHaveBeenCalledTimes(2));
+    expect(vm.live.sourceProfile.value).toBe("baseline");
+    expect(client.start).toHaveBeenLastCalledWith(expect.objectContaining({ fps: 30 }));
+    expect(
+      vm.live.diagnostics.value.some(
+        (line) => line.includes("decoder") || line.includes("No decoded"),
+      ),
+    ).toBe(true);
+  });
+
   it("starts preview on Studio and releases it when leaving without webcam output", async () => {
     vm.camera.status.value = "connected";
     await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
     routing.route.path = "/settings";
     await vi.waitFor(() => expect(vm.live.active.value).toBe(false));
+    expect(client.start).not.toHaveBeenCalled();
+  });
+
+  it("keeps a trailing-slash Studio preview available for profile probes while output is stopped", async () => {
+    routing.route.path = "/studio/";
+    vm.camera.status.value = "connected";
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
+    transport.liveViewStart = vi.fn(async (profile) => {
+      if (profile === "4k60") throw new Error("unsupported source");
+      return { url: "http://127.0.0.1:49183/stream", port: 49183 };
+    });
+    vm.live.sourceProfile.value = "4k60";
+    await vi.waitFor(() => expect(vm.live.sourceProfile.value).toBe("baseline"));
+    expect(transport.liveViewStart).toHaveBeenCalledWith("4k60");
+    await vi.waitFor(() => expect(vm.live.active.value).toBe(true));
     expect(client.start).not.toHaveBeenCalled();
   });
 

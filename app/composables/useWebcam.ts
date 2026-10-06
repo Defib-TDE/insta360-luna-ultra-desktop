@@ -72,7 +72,15 @@ export function useWebcam() {
     error.value = null;
     wanted.value = true;
     request.value += 1;
-    status.value = { ...status.value, phase: "starting", error: null };
+    status.value = {
+      ...status.value,
+      phase: "starting",
+      error: null,
+      sourceWidth: null,
+      sourceHeight: null,
+      sourceFps: null,
+      outputFps: null,
+    };
   }
 
   function stop() {

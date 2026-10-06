@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_URL = "http://127.0.0.1:49183/stream"
+SOURCE_PROFILES = {
+    "baseline": (1280, 720, 30),
+    "1080p30": (1920, 1080, 30),
+    "1080p60": (1920, 1080, 60),
+    "4k30": (3840, 2160, 30),
+    "4k60": (3840, 2160, 60),
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -66,16 +73,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=30,
         help="Frames to decode in probe mode",
     )
+    parser.add_argument("--warmup-seconds", type=float, default=0, help="Ignore initial buffered frames for this many seconds after first decode")
+    parser.add_argument("--probe-timeout", type=float, default=45, help="Total deadline for a source probe, including open/warmup")
+    parser.add_argument("--expect-profile", choices=tuple(SOURCE_PROFILES), help="Verify delivered source against a profile selected in Studio; does not change the camera")
     args = parser.parse_args(argv)
     if bool(args.width) != bool(args.height):
         parser.error("--width and --height must be supplied together")
     if args.fps is not None and (args.fps <= 0 or not math.isfinite(args.fps)):
         parser.error("--fps must be positive")
-    for name in ("startup_timeout", "read_timeout"):
+    for name in ("startup_timeout", "read_timeout", "probe_timeout"):
         if getattr(args, name) <= 0 or not math.isfinite(getattr(args, name)):
             parser.error(f"--{name.replace('_', '-')} must be finite and positive")
     if args.probe_frames <= 0:
         parser.error("--probe-frames must be positive")
+    if args.warmup_seconds < 0 or not math.isfinite(args.warmup_seconds):
+        parser.error("--warmup-seconds must be finite and nonnegative")
+    if args.expect_profile and not args.probe_only:
+        parser.error("--expect-profile requires --probe-only")
     return args
 
 
@@ -115,11 +129,13 @@ def detected_fps(stream: Any) -> float:
     return 30.0
 
 
-def probe(av: Any, args: argparse.Namespace) -> int:
+def probe_result(av: Any, args: argparse.Namespace) -> dict[str, Any]:
     started = time.monotonic()
     first_frame_at: float | None = None
+    sample_first_at: float | None = None
     last_frame_at: float | None = None
     decoded = 0
+    warmup_frames = 0
     width = 0
     height = 0
     rate = 30.0
@@ -130,6 +146,11 @@ def probe(av: Any, args: argparse.Namespace) -> int:
             decoded_at = time.monotonic()
             if first_frame_at is None:
                 first_frame_at = decoded_at
+            if decoded_at - first_frame_at < args.warmup_seconds:
+                warmup_frames += 1
+                continue
+            if sample_first_at is None:
+                sample_first_at = decoded_at
             last_frame_at = decoded_at
             width, height = frame.width, frame.height
             decoded += 1
@@ -137,8 +158,8 @@ def probe(av: Any, args: argparse.Namespace) -> int:
                 break
     elapsed = time.monotonic() - started
     frame_span = (
-        last_frame_at - first_frame_at
-        if first_frame_at is not None and last_frame_at is not None
+        last_frame_at - sample_first_at
+        if sample_first_at is not None and last_frame_at is not None
         else 0.0
     )
     observed_fps = (decoded - 1) / frame_span if decoded > 1 and frame_span > 0 else 0.0
@@ -154,9 +175,44 @@ def probe(av: Any, args: argparse.Namespace) -> int:
         ),
         "url": args.url,
         "width": width,
+        "warmupFrames": warmup_frames,
+        "warmupSeconds": args.warmup_seconds,
     }
+    if args.expect_profile:
+        expected_width, expected_height, expected_fps = SOURCE_PROFILES[args.expect_profile]
+        dimensions_match = sorted((width, height)) == sorted((expected_width, expected_height))
+        cadence_match = abs(observed_fps - expected_fps) <= expected_fps * 0.1
+        result["verification"] = {
+            "requestedProfile": args.expect_profile,
+            "dimensionsMatch": dimensions_match,
+            "cadenceMatch": cadence_match,
+            "status": "incomplete" if decoded < args.probe_frames else "matched_sample" if dimensions_match and cadence_match else "different_output",
+        }
+    return result
+
+
+def probe(av: Any, args: argparse.Namespace) -> int:
+    # Decode can block inside FFmpeg even when corrupt bytes keep arriving.
+    # A daemon worker lets this one-shot CLI process enforce a total deadline.
+    results: queue.Queue[Any] = queue.Queue(maxsize=1)
+    def measure() -> None:
+        try:
+            results.put(probe_result(av, args))
+        except Exception as error:
+            results.put(error)
+    threading.Thread(target=measure, name="luna-source-probe", daemon=True).start()
+    try:
+        result = results.get(timeout=args.probe_timeout)
+    except queue.Empty:
+        print(json.dumps({"error": "probe_timeout", "timeoutSeconds": args.probe_timeout}))
+        return 1
+    if isinstance(result, Exception):
+        print(json.dumps({"error": str(result)}))
+        return 1
     print(json.dumps(result, sort_keys=True))
-    return 0 if decoded == args.probe_frames else 1
+    if result["decodedFrames"] != args.probe_frames:
+        return 1
+    return 2 if result.get("verification", {}).get("status") == "different_output" else 0
 
 
 @dataclass

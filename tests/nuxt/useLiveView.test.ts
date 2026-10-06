@@ -38,9 +38,44 @@ describe("useLiveView", () => {
         "liveview-failed",
         "liveview-revision",
         "liveview-diagnostics",
+        "liveview-source-profile",
       ],
       { reset: true },
     );
+  });
+
+  it("restores baseline after an experimental camera request is rejected", async () => {
+    const transport = makeFakeTransport({
+      liveViewStart: vi.fn(async (profile) => {
+        if (profile === "1080p60") throw new Error("request unsupported");
+        return { url: "http://127.0.0.1:9000/live", port: 9000 };
+      }),
+    });
+    setCameraTransport(transport);
+    const { camera, live } = await mountLive();
+    await camera.connect();
+    live.sourceProfile.value = "1080p60";
+    await live.start();
+    expect(transport.liveViewStart).toHaveBeenNthCalledWith(1, "1080p60");
+    expect(transport.liveViewStart).toHaveBeenNthCalledWith(2, "baseline");
+    expect(live.sourceProfile.value).toBe("baseline");
+    expect(live.active.value).toBe(true);
+  });
+
+  it("restores baseline instead of endlessly retrying a silent experimental source", async () => {
+    const transport = makeFakeTransport();
+    setCameraTransport(transport);
+    const { camera, live } = await mountLive();
+    await camera.connect();
+    vi.useFakeTimers();
+    live.sourceProfile.value = "4k60";
+    await live.start();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(live.sourceProfile.value).toBe("baseline");
+    expect(transport.liveViewStart).toHaveBeenNthCalledWith(2, "baseline");
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(transport.liveViewStart).toHaveBeenCalledTimes(2);
+    expect(live.failed.value).toBe(true);
   });
 
   it("prefers an OSC MJPEG preview when the camera offers one", async () => {

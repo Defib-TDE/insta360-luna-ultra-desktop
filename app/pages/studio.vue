@@ -3,6 +3,7 @@ import { WEBCAM_PROFILES } from "~/utils/webcamProfiles";
 import { openStudioHelp } from "~/utils/webcamClient";
 import { collectCameraReport, collectConnectionReport } from "~/utils/cameraReport";
 import { saveBlob } from "~/utils/saveFile";
+import { PREVIEW_PROFILES, previewVerdict } from "~/utils/previewProfiles";
 
 useHead({ title: "Studio" });
 const camera = useCamera();
@@ -59,7 +60,7 @@ const framingHint = computed(() => {
     : "Your source is portrait. Set landscape orientation on the camera for a wider picture; output keeps its proportions.";
 });
 const sourceLabel = computed(() =>
-  status.value.sourceWidth
+  wanted.value && status.value.sourceWidth
     ? `${status.value.sourceWidth} × ${status.value.sourceHeight}`
     : "Awaiting video",
 );
@@ -90,12 +91,15 @@ async function exportCameraReport() {
   try {
     const report = await collectCameraReport(camera.info.value ?? {}, {
       codec: codec.value,
-      sourceWidth: status.value.sourceWidth,
-      sourceHeight: status.value.sourceHeight,
-      observedDecodeFps: status.value.sourceFps,
+      sourceWidth: wanted.value ? status.value.sourceWidth : null,
+      sourceHeight: wanted.value ? status.value.sourceHeight : null,
+      observedDecodeFps: wanted.value ? status.value.sourceFps : null,
       outputWidth: profile.value.width,
       outputHeight: profile.value.height,
-      outputFps: profile.value.fps,
+      outputFps: wanted.value
+        ? (status.value.outputFps ?? live.sourceRequest.value.fps)
+        : live.sourceRequest.value.fps,
+      requestedProfile: live.sourceProfile.value,
     });
     reportLocation.value = await saveBlob(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
@@ -295,10 +299,54 @@ async function exportConnectionReport() {
               }}
               {{
                 profileId === "fullhd"
-                  ? "1080p scales the source; camera detail stays the same."
+                  ? "1080p output scales to fit the delivered source; source measurements show the actual camera detail."
                   : ""
               }}
             </p>
+            <section
+              class="space-y-3 rounded-2xl border border-default bg-default/70 p-4"
+              aria-label="Camera source settings"
+            >
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-highlighted"
+              >
+                <label for="native-source-profile">Native camera source</label>
+                <select
+                  id="native-source-profile"
+                  v-model="live.sourceProfile.value"
+                  :disabled="wanted || busy || preparing || live.starting.value"
+                  class="max-w-full rounded-xl border border-default bg-default p-2 text-xs"
+                >
+                  <option v-for="choice in PREVIEW_PROFILES" :key="choice.id" :value="choice.id">
+                    {{ choice.label }}
+                  </option>
+                </select>
+              </div>
+              <p class="text-xs leading-relaxed text-muted">
+                These request a different feed from Luna. Experimental profiles may be ignored or
+                unavailable; use the source measurements below to check what arrives. Stop webcam
+                before changing. Keep camera mode and orientation fixed while comparing.
+              </p>
+              <p v-if="status.sourceWidth && wanted" class="text-xs text-muted" role="status">
+                {{
+                  previewVerdict(
+                    live.sourceProfile.value,
+                    status.sourceWidth,
+                    status.sourceHeight,
+                    status.sourceFps,
+                  )
+                }}
+              </p>
+              <UButton
+                v-if="live.sourceProfile.value !== 'baseline'"
+                label="Use tested baseline"
+                size="xs"
+                color="neutral"
+                variant="outline"
+                :disabled="wanted || live.starting.value"
+                @click="live.sourceProfile.value = 'baseline'"
+              />
+            </section>
             <p
               v-if="framingHint"
               class="px-1 text-xs leading-relaxed text-amber-600 dark:text-amber-300"
@@ -317,13 +365,20 @@ async function exportConnectionReport() {
               <div>
                 <p class="text-[10px] uppercase tracking-widest text-muted">Decoded</p>
                 <p class="mt-1 font-mono text-xs text-highlighted">
-                  {{ status.sourceFps ? `${status.sourceFps.toFixed(1)} fps` : "Measuring…" }}
+                  {{
+                    wanted && status.sourceFps ? `${status.sourceFps.toFixed(1)} fps` : "Measuring…"
+                  }}
                 </p>
               </div>
               <div>
                 <p class="text-[10px] uppercase tracking-widest text-muted">Output</p>
                 <p class="mt-1 font-mono text-xs text-highlighted">
-                  {{ status.outputFps ?? profile.fps }} fps
+                  {{
+                    wanted
+                      ? (status.outputFps ?? live.sourceRequest.value.fps)
+                      : live.sourceRequest.value.fps
+                  }}
+                  fps
                 </p>
               </div>
             </div>

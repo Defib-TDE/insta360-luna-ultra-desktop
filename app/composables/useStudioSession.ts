@@ -13,6 +13,7 @@ export function useStudioSession() {
   let queue = Promise.resolve();
   let disposed = false;
   let startedRequest = -1;
+  let startedSourceProfile: string | undefined;
   let preparedRequest = -1;
   let preparation: AbortController | undefined;
   let navigatingTo: string | undefined;
@@ -22,11 +23,13 @@ export function useStudioSession() {
   const settingsMode = useState("camera-settings-mode", () => "FUNCTION_MODE_NORMAL_VIDEO");
   const device = useState<ProtoObject>("camera-device-options", () => ({}));
   let timer: ReturnType<typeof setInterval> | undefined;
+  const isPreviewRoute = (path: string) =>
+    ["/camera", "/studio"].includes(path.replace(/\/+$/, ""));
   // Release MJPEG before Gallery starts its camera HTTP requests. An active
   // webcam always uses the control-session relay and must survive navigation.
   const removeGuard = router.beforeEach(async (to) => {
     navigatingTo = to.path;
-    if (!webcam.wanted.value && !["/camera", "/studio"].includes(to.path) && live.active.value) {
+    if (!webcam.wanted.value && !isPreviewRoute(to.path) && live.active.value) {
       await live.stop();
     }
   });
@@ -90,7 +93,7 @@ export function useStudioSession() {
   async function reconcile() {
     if (disposed) return;
     // Nuxt's route can still refer to the old page during a navigation guard.
-    const preview = ["/camera", "/studio"].includes(navigatingTo ?? route.path);
+    const preview = isPreviewRoute(navigatingTo ?? route.path);
     if (!webcam.wanted.value && (webcam.running.value || webcam.status.value.url)) {
       await getWebcamClient().stop();
       await webcam.refresh();
@@ -99,7 +102,7 @@ export function useStudioSession() {
     if (!camera.isConnected.value) {
       if (live.active.value) await live.stop();
       // Wi-Fi loss keeps the user's connection intent; an explicit Disconnect
-      // (or a health-forced disconnect) must release output, not retry forever.
+      // must release output; health failures preserve automatic recovery.
       if (!camera.wantConnection.value && webcam.wanted.value) {
         webcam.wanted.value = false;
         await getWebcamClient().stop();
@@ -126,6 +129,7 @@ export function useStudioSession() {
     ) {
       if (
         startedRequest !== webcam.request.value ||
+        startedSourceProfile !== live.sourceProfile.value ||
         (webcam.running.value && webcam.status.value.url !== live.streamUrl.value)
       ) {
         const profile = webcam.profile.value;
@@ -134,12 +138,30 @@ export function useStudioSession() {
           codec: webcam.codec.value,
           width: profile.width,
           height: profile.height,
-          fps: profile.fps,
+          fps: live.sourceRequest.value.fps,
           mirror: webcam.mirror.value,
         });
         startedRequest = request;
+        startedSourceProfile = live.sourceProfile.value;
         await webcam.refresh();
+        recoverFailedSource();
       }
+    }
+  }
+
+  function recoverFailedSource() {
+    if (
+      camera.isConnected.value &&
+      webcam.wanted.value &&
+      live.sourceProfile.value !== "baseline" &&
+      webcam.status.value.phase === "error" &&
+      !webcam.status.value.device
+    ) {
+      live.note(
+        `Experimental source ${live.sourceProfile.value} could not start output: ${webcam.status.value.error ?? "decoder failed"}. Restoring baseline.`,
+      );
+      live.resetRecovery();
+      live.sourceProfile.value = "baseline";
     }
   }
 
@@ -153,7 +175,14 @@ export function useStudioSession() {
   }
 
   watch(
-    [() => route.path, camera.isConnected, webcam.wanted, webcam.request, live.streamUrl],
+    [
+      () => route.path,
+      camera.isConnected,
+      webcam.wanted,
+      webcam.request,
+      live.streamUrl,
+      live.sourceProfile,
+    ],
     schedule,
     {
       immediate: true,
@@ -168,6 +197,13 @@ export function useStudioSession() {
   );
   watch(
     webcam.request,
+    () => {
+      if (live.failed.value) live.resetRecovery();
+    },
+    { flush: "sync" },
+  );
+  watch(
+    live.sourceProfile,
     () => {
       if (live.failed.value) live.resetRecovery();
     },
@@ -189,7 +225,7 @@ export function useStudioSession() {
   onMounted(() => {
     void webcam.check();
     timer = setInterval(() => {
-      void webcam.refresh();
+      void webcam.refresh().then(recoverFailedSource);
       if (camera.isConnected.value && webcam.wanted.value && !live.active.value) schedule();
     }, 1000);
   });

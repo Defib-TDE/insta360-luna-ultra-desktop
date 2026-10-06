@@ -24,7 +24,7 @@ export const WEBCAM_PROFILES = [
   {
     id: "fullhd",
     label: "Full HD",
-    detail: "Upscaled · 1080p",
+    detail: "1920 × 1080 output",
     width: 1920,
     height: 1080,
     fps: 30,
