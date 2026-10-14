@@ -78,11 +78,13 @@ jobs:
       - name: Generate production frontend
         if: ${{ !cancelled() }}
         run: bun run generate
-      - name: Validate Python webcam bridge syntax
+      - name: Validate Python webcam bridge and pixel conversion
         if: ${{ !cancelled() }}
         run: |
-          python -m py_compile tools/webcam_bridge.py
-          python -m unittest discover -s tools -p 'test_webcam_bridge.py'
+          python -m venv .venv-webcam-test
+          .venv-webcam-test/bin/python -m pip install --disable-pip-version-check --only-binary=:all: -r tools/webcam-requirements.txt
+          .venv-webcam-test/bin/python -m py_compile tools/webcam_bridge.py
+          .venv-webcam-test/bin/python -m unittest discover -s tools -p 'test_webcam_bridge.py'
 
   rust:
     runs-on: ubuntu-22.04
