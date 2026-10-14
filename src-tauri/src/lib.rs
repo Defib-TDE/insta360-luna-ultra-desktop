@@ -17,6 +17,7 @@ pub fn run() {
             luna::luna_connect,
             luna::luna_disconnect,
             luna::luna_status,
+            luna::luna_transfer_activity,
             luna::luna_connection_diagnostics,
             luna::luna_delete_files,
             luna::luna_command,

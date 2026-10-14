@@ -14,6 +14,179 @@ import webcam_bridge as bridge
 
 
 class BridgeTests(unittest.TestCase):
+    def test_decoder_does_not_convert_frames_replaced_before_publication(self):
+        stop = threading.Event()
+        frames = [SimpleNamespace(width=640, height=480) for _ in range(3)]
+        def decode(**_):
+            yield from frames
+            stop.set()
+        container = SimpleNamespace(streams=SimpleNamespace(video=[SimpleNamespace(average_rate=30, base_rate=None, guessed_rate=None)]), decode=decode)
+        latest = queue.Queue(maxsize=1)
+        with patch.object(bridge, "open_stream", return_value=contextlib.nullcontext(container)), patch.object(bridge, "frame_pixels", return_value="pixels") as convert:
+            bridge.decode_latest(None, bridge.parse_args([]), latest, stop)
+        self.assertEqual(convert.call_count, 0, "conversion belongs to the selected output frame")
+        self.assertIs(latest.get_nowait().frame, frames[-1])
+
+    def test_decoder_reconnect_keeps_output_size_and_marks_the_new_generation(self):
+        stop = threading.Event()
+        first = SimpleNamespace(width=640, height=480)
+        recovered = SimpleNamespace(width=1280, height=720)
+        def decode_first(**_):
+            yield first
+            raise RuntimeError("synthetic read failure")
+        def decode_recovered(**_):
+            yield recovered
+            stop.set()
+        stream = SimpleNamespace(average_rate=30, base_rate=None, guessed_rate=None)
+        containers = [contextlib.nullcontext(SimpleNamespace(streams=SimpleNamespace(video=[stream]), decode=decode)) for decode in (decode_first, decode_recovered)]
+        latest = queue.Queue(maxsize=1)
+        stdout = io.StringIO()
+        with patch.object(bridge, "open_stream", side_effect=containers), patch.object(stop, "wait", return_value=False), contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(stdout):
+            bridge.decode_latest(None, bridge.parse_args(["--json-events"]), latest, stop)
+        frame = latest.get_nowait()
+        self.assertIs(frame.frame, recovered)
+        self.assertEqual((frame.width, frame.height), (640, 480))
+        self.assertEqual(frame.generation, 2)
+        self.assertEqual([json.loads(line)["event"] for line in stdout.getvalue().splitlines()], ["source", "reconnecting", "source"])
+
+    def test_publisher_converts_only_selected_frames_and_reuses_repeats(self):
+        import numpy
+        import av
+        older = av.VideoFrame.from_ndarray(numpy.full((2, 2, 3), 30, dtype=numpy.uint8), format="rgb24")
+        newest = av.VideoFrame.from_ndarray(numpy.full((2, 2, 3), 200, dtype=numpy.uint8), format="rgb24")
+        sent = []
+        holder = {}
+        def decoder(_av, _args, output, _stop):
+            holder["queue"] = output
+            output.put(bridge.DecodedFrame(older, 2, 2, 30, 0))
+        class Camera:
+            fps = 30
+            device = "Simulated camera"
+            backend = "fake"
+            def __init__(self, **_): pass
+            def __enter__(self):
+                # A newer decoded frame arrives while the output device opens.
+                holder["queue"].put(bridge.DecodedFrame(newest, 2, 2, 30, 0))
+                return self
+            def __exit__(self, *_): pass
+            def send(self, frame): sent.append(frame)
+            def sleep_until_next_frame(self):
+                if len(sent) == 3:
+                    raise KeyboardInterrupt()
+        fake = SimpleNamespace(Camera=Camera, PixelFormat=SimpleNamespace(RGB="RGB"))
+        with patch.dict(sys.modules, {"pyvirtualcam": fake}), patch.object(bridge, "decode_latest", decoder), patch.object(bridge, "frame_pixels", wraps=bridge.frame_pixels) as convert, patch.object(bridge.time, "monotonic", return_value=.5), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(bridge.run_virtual_camera(None, bridge.parse_args([])), 0)
+        self.assertEqual(convert.call_count, 1)
+        self.assertIs(convert.call_args.args[0], newest)
+        self.assertTrue(numpy.all(sent[0] == 200))
+        self.assertTrue(all(frame is sent[0] for frame in sent))
+
+    def test_same_aspect_resize_needs_no_padding_canvas(self):
+        import numpy
+        import av
+        frame = av.VideoFrame.from_ndarray(numpy.full((4, 8, 3), 127, dtype=numpy.uint8), format="rgb24")
+        with patch.object(numpy, "zeros", wraps=numpy.zeros) as allocate_padding:
+            pixels = bridge.frame_pixels(frame, 16, 8, False, numpy)
+        self.assertEqual(pixels.shape, (8, 16, 3))
+        self.assertTrue(numpy.all(pixels == 127))
+        self.assertEqual(allocate_padding.call_count, 0)
+
+    def test_conversion_failure_uses_slate_until_a_fresh_frame_arrives(self):
+        import numpy
+        import av
+        class BrokenFrame:
+            width = height = 2
+            def to_ndarray(self, **_):
+                raise ValueError("synthetic invalid decoded frame")
+        bad = BrokenFrame()
+        good = av.VideoFrame.from_ndarray(numpy.full((2, 2, 3), 200, dtype=numpy.uint8), format="rgb24")
+        sent = []
+        holder = {}
+        def decoder(_av, _args, output, _stop):
+            holder["queue"] = output
+            output.put(bridge.DecodedFrame(bad, 2, 2, 30, 0))
+        class Camera:
+            fps = 30
+            device = "Simulated camera"
+            backend = "fake"
+            def __init__(self, **_): pass
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def send(self, frame): sent.append(frame.copy())
+            def sleep_until_next_frame(self):
+                if len(sent) == 2:
+                    holder["queue"].put(bridge.DecodedFrame(good, 2, 2, 30, 0))
+                if len(sent) == 3:
+                    raise KeyboardInterrupt()
+        fake = SimpleNamespace(Camera=Camera, PixelFormat=SimpleNamespace(RGB="RGB"))
+        stderr = io.StringIO()
+        stdout = io.StringIO()
+        with patch.dict(sys.modules, {"pyvirtualcam": fake}), patch.object(bridge, "decode_latest", decoder), patch.object(bridge, "frame_pixels", wraps=bridge.frame_pixels) as convert, patch.object(bridge.time, "monotonic", return_value=.5), contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+            self.assertEqual(bridge.run_virtual_camera(None, bridge.parse_args(["--json-events"])), 0)
+        self.assertEqual(convert.call_count, 2, "a failed frame must not be retried every output tick")
+        self.assertTrue(numpy.all(sent[0] == (17, 17, 24)))
+        self.assertTrue(numpy.all(sent[1] == (17, 17, 24)))
+        self.assertTrue(numpy.all(sent[2] == 200))
+        self.assertIn("Frame conversion failed", stderr.getvalue())
+        self.assertEqual([json.loads(line)["event"] for line in stdout.getvalue().splitlines()], ["stalled", "publishing"])
+
+    def test_fast_decoder_reconnect_reports_resume_after_sending_fresh_pixels(self):
+        import numpy
+        import av
+        frame = av.VideoFrame.from_ndarray(numpy.full((2, 2, 3), 200, dtype=numpy.uint8), format="rgb24")
+        sent = []
+        holder = {}
+        stdout = io.StringIO()
+        def decoder(_av, _args, output, _stop):
+            holder["queue"] = output
+            output.put(bridge.DecodedFrame(frame, 2, 2, 30, 0))
+        class Camera:
+            fps = 30
+            device = "Simulated camera"
+            backend = "fake"
+            def __init__(self, **_): pass
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def send(self, pixels):
+                sent.append(pixels)
+                # Healthy output events must follow a successful send.
+                self_events = [json.loads(line)["event"] for line in stdout.getvalue().splitlines()]
+                if len(sent) == 1:
+                    assert self_events == []
+                elif len(sent) == 2:
+                    assert self_events == ["publishing"]
+            def sleep_until_next_frame(self):
+                if len(sent) == 1:
+                    recovered = bridge.DecodedFrame(frame, 2, 2, 30, 0)
+                    recovered.generation = 1
+                    holder["queue"].put(recovered)
+                if len(sent) == 2:
+                    raise KeyboardInterrupt()
+        fake = SimpleNamespace(Camera=Camera, PixelFormat=SimpleNamespace(RGB="RGB"))
+        with patch.dict(sys.modules, {"pyvirtualcam": fake}), patch.object(bridge, "decode_latest", decoder), patch.object(bridge.time, "monotonic", return_value=.5), contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(stdout):
+            self.assertEqual(bridge.run_virtual_camera(None, bridge.parse_args(["--json-events"])), 0)
+        self.assertEqual([json.loads(line)["event"] for line in stdout.getvalue().splitlines()], ["publishing", "resumed"])
+
+    def test_pixel_conversion_preserves_padding_mirroring_and_contiguous_output(self):
+        import numpy
+        import av
+        source = numpy.zeros((4, 8, 3), dtype=numpy.uint8)
+        source[:, :4] = (220, 30, 10)
+        source[:, 4:] = (10, 60, 230)
+        frame = av.VideoFrame.from_ndarray(source, format="rgb24")
+        for width, height in [(8, 4), (16, 8), (8, 16)]:
+            with self.subTest(width=width, height=height):
+                normal = bridge.frame_pixels(frame, width, height, False, numpy)
+                mirrored = bridge.frame_pixels(frame, width, height, True, numpy)
+                self.assertEqual(normal.shape, (height, width, 3))
+                self.assertTrue(normal.flags.c_contiguous)
+                self.assertTrue(mirrored.flags.c_contiguous)
+                numpy.testing.assert_array_equal(mirrored, normal[:, ::-1])
+                if height == 16:
+                    numpy.testing.assert_array_equal(normal[6:10], source)
+                    self.assertFalse(normal[:6].any())
+                    self.assertFalse(normal[10:].any())
+
     def test_cli_rejects_incomplete_output_dimensions(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             bridge.parse_args(["--width", "1280"])
@@ -69,7 +242,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_first_frame_deadline_releases_decoder_without_opening_a_camera(self):
         stopped = threading.Event()
-        def decoder(_av, _numpy, _args, _output, stop):
+        def decoder(_av, _args, _output, stop):
             stop.wait(1)
             if stop.is_set():
                 stopped.set()
@@ -94,7 +267,7 @@ class BridgeTests(unittest.TestCase):
         args = bridge.parse_args(["--json-events", "--width", "1280", "--height", "720", "--fps", "30"])
         stdout = io.StringIO()
         with patch.object(bridge, "open_stream", return_value=contextlib.nullcontext(container)), patch.object(bridge, "frame_pixels", return_value="pixels"), patch.object(bridge.time, "monotonic", side_effect=[0, 0.1, 5.1]), contextlib.redirect_stdout(stdout):
-            bridge.decode_latest(None, None, args, queue.Queue(maxsize=1), stop)
+            bridge.decode_latest(None, args, queue.Queue(maxsize=1), stop)
         events = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual(events[0], {"event": "source", "width": 640, "height": 480, "observedDecodeFps": None})
         self.assertEqual(events[1]["observedDecodeFps"], 0.2)
@@ -102,14 +275,16 @@ class BridgeTests(unittest.TestCase):
     def test_stalled_output_uses_a_slate_and_reports_recovery(self):
         try:
             import numpy
+            import av
         except ImportError:
-            self.skipTest("numpy required for pixel tests")
+            self.skipTest("numpy and PyAV required for pixel tests")
         pixels = numpy.full((2, 2, 3), 255, dtype=numpy.uint8)
+        frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
         sent = []
         holder = {}
-        def decoder(_av, _numpy, _args, output, _stop):
+        def decoder(_av, _args, output, _stop):
             holder["queue"] = output
-            output.put(bridge.DecodedFrame(pixels, 2, 2, 30, 0))
+            output.put(bridge.DecodedFrame(frame, 2, 2, 30, 0))
         class Camera:
             fps = 30
             device = "Simulated camera"
@@ -120,7 +295,7 @@ class BridgeTests(unittest.TestCase):
             def send(self, frame): sent.append(frame.copy())
             def sleep_until_next_frame(self):
                 if len(sent) == 2:
-                    holder["queue"].put(bridge.DecodedFrame(pixels, 2, 2, 30, 3))
+                    holder["queue"].put(bridge.DecodedFrame(frame, 2, 2, 30, 3))
                 if len(sent) == 3:
                     raise KeyboardInterrupt()
         fake = SimpleNamespace(Camera=Camera, PixelFormat=SimpleNamespace(RGB="RGB"))

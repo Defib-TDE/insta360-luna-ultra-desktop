@@ -2,7 +2,7 @@ export const WEBCAM_PROFILES = [
   {
     id: "landscape",
     label: "Landscape",
-    detail: "Calls & OBS",
+    detail: "720p · calls & OBS",
     width: 1280,
     height: 720,
     fps: 30,
@@ -13,7 +13,7 @@ export const WEBCAM_PROFILES = [
   {
     id: "portrait",
     label: "Portrait",
-    detail: "Vertical streams",
+    detail: "720p · vertical",
     width: 720,
     height: 1280,
     fps: 30,
@@ -24,7 +24,7 @@ export const WEBCAM_PROFILES = [
   {
     id: "fullhd",
     label: "Full HD",
-    detail: "1920 × 1080 output",
+    detail: "1080p output · upscaled",
     width: 1920,
     height: 1080,
     fps: 30,

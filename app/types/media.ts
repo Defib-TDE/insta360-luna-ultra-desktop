@@ -87,7 +87,10 @@ export interface DownloadEntry {
   id: string;
   item: MediaItem;
   status: DownloadStatus;
-  progress: number;
+  /** Null while a transfer has no reliable content length. */
+  progress: number | null;
+  downloadedBytes: number;
+  totalBytes: number | null;
   watermarked: boolean;
   savedTo?: string;
   error?: string;

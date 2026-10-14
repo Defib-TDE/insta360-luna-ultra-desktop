@@ -20,6 +20,9 @@ function resolveBuildCommit() {
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   modules: ["@nuxt/ui"],
+  // Desktop use must work on camera Wi-Fi without internet. Fonts are bundled
+  // with the app instead of resolving providers during startup or tests.
+  ui: { fonts: false },
   // Keep installs and builds non-interactive in terminals and CI.
   telemetry: false,
   devtools: {
@@ -30,6 +33,21 @@ export default defineNuxtConfig({
   icon: {
     clientBundle: {
       scan: true,
+      // These names are selected from TypeScript profile/readiness objects,
+      // so the template scanner cannot discover every possible value.
+      icons: [
+        "lucide:monitor",
+        "lucide:smartphone",
+        "lucide:expand",
+        "lucide:loader-circle",
+        "lucide:wifi-off",
+        "lucide:video",
+        "lucide:refresh-cw",
+        "lucide:circle-alert",
+        "lucide:download",
+        "lucide:wifi",
+        "lucide:circle-check",
+      ],
       sizeLimitKb: 512,
     },
   },

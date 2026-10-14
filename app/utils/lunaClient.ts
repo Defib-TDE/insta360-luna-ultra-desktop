@@ -7,7 +7,11 @@ import type {
 } from "~/types/media";
 import { isTauri } from "~/utils/saveFile";
 import { buildMediaItems, entriesFromPaths } from "~/utils/lunaIndex";
-import { reportCameraFailure, reportCameraSuccess } from "~/utils/cameraHealth";
+import {
+  createHealthTransferReporter,
+  reportCameraFailure,
+  reportCameraSuccess,
+} from "~/utils/cameraHealth";
 import { concatBytes, decodeRaw, encodeTag, encodeVarint, WIRE_VARINT } from "~/utils/protobuf";
 import type { PreviewProfileId } from "~/utils/previewProfiles";
 
@@ -235,6 +239,20 @@ export const lunaClient = {
 
   /** Bypasses health reporting. */
   probe: probeCamera,
+
+  async createTransferActivityReporter(): Promise<() => void> {
+    const reportHealth = createHealthTransferReporter();
+    // Reading a token does not report activity: only real response chunks do.
+    const generation = isTauri() ? await tauriInvoke<number>("luna_transfer_activity") : null;
+    let lastReport = -Infinity;
+    return () => {
+      reportHealth();
+      const now = performance.now();
+      if (generation === null || now - lastReport < 2000) return;
+      lastReport = now;
+      void tauriInvoke("luna_transfer_activity", { generation }).catch(() => {});
+    };
+  },
 
   /**
    * Subscribe to the Rust side's disconnect event. Returns an unlisten fn.

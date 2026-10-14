@@ -59,7 +59,7 @@ turns out to live — see [`PROTOCOL-GAP.md`](PROTOCOL-GAP.md).
 | OSC MJPEG preview                    | ✅     | Probed first; used when the camera offers it.                                                        |
 | Control-session H.264 stream         | ✅     | `START_LIVE_STREAM` → Rust bridges the socket to a local HTTP port.                                  |
 | Annex-B → WebCodecs decode to canvas | ✅     | NAL splitting, access-unit assembly, keyframe gating in `app/utils/annexB.ts`.                       |
-| Preview auto-start / auto-stop       | 🚧     | Starts on connect but currently stops on navigation because ownership belongs to the Camera page.    |
+| Preview auto-start / auto-stop       | ✅     | Studio owns the relay while webcam output runs, including navigation; Camera-only preview follows its page.    |
 | External elementary-stream URL       | 🚧     | Available for Annex-B control-session preview; not exposed when OSC MJPEG wins transport selection.  |
 | Windows virtual-camera bridge        | 🧪     | PyAV/pyvirtualcam prototype; simulated decode proven, Windows and camera hardware tests outstanding. |
 | Stream diagnostics                   | 🧪     | Inside the settings slide-over, which is gated with `allSettings`.                                   |

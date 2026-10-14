@@ -34,9 +34,11 @@ if (-not (Test-Path $Python)) {
         $Launcher = Get-Command python -ErrorAction Stop
         & $Launcher.Source -m venv $Venv
     }
+    if ($LASTEXITCODE -ne 0) { throw "Creating the webcam Python environment failed." }
 }
 
 & $Python -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "webcam-requirements.txt")
+if ($LASTEXITCODE -ne 0) { throw "Webcam dependency installation failed; the bridge was not started." }
 
 $BridgeArgs = @(
     (Join-Path $PSScriptRoot "webcam_bridge.py"),

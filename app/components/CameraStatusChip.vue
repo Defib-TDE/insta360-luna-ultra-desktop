@@ -1,15 +1,23 @@
 <script setup lang="ts">
 defineProps<{ collapsed?: boolean }>();
 
-const { status, info } = useCamera();
+const { status, info, wantConnection } = useCamera();
 
 const meta = computed(() => {
+  if (status.value !== "connected" && wantConnection.value) {
+    return {
+      label: "Reconnecting",
+      icon: "i-lucide-refresh-cw",
+      color: "warning" as const,
+      spin: true,
+    };
+  }
   switch (status.value) {
     case "connected":
       return { label: "Connected", icon: "i-lucide-wifi", color: "success" as const };
     case "connecting":
       return {
-        label: "Pairing",
+        label: "Connecting",
         icon: "i-lucide-loader-circle",
         color: "neutral" as const,
         spin: true,
@@ -20,7 +28,11 @@ const meta = computed(() => {
 });
 
 const tooltip = computed(() =>
-  info.value ? (info.value.ssid ?? info.value.host) : "Camera not connected",
+  status.value !== "connected" && wantConnection.value
+    ? "Reconnecting to Luna. Keep your computer on the camera’s Wi-Fi."
+    : info.value
+      ? (info.value.ssid ?? info.value.host)
+      : "Camera not connected",
 );
 </script>
 
@@ -41,7 +53,7 @@ const tooltip = computed(() =>
         <UIcon
           :name="meta.icon"
           class="size-3.5 shrink-0"
-          :class="meta.spin ? 'animate-spin' : ''"
+          :class="meta.spin ? 'motion-safe:animate-spin' : ''"
         />
         <span v-if="!collapsed">{{ meta.label }}</span>
       </UBadge>

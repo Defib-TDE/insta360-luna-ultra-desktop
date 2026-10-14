@@ -21,6 +21,8 @@ let probeCamera: (() => Promise<boolean>) | null = null;
 let probeInFlight = false;
 let revision = 0;
 let successRevision = 0;
+let lastTransferActivity: number | null = null;
+const TRANSFER_ACTIVITY_WINDOW_MS = 90_000;
 
 /**
  * Start counting. Replaces any previous callback and resets the count.
@@ -30,6 +32,7 @@ let successRevision = 0;
  */
 export function armCameraHealth(onDead: () => void, probe: () => Promise<boolean>): void {
   revision += 1;
+  lastTransferActivity = null;
   consecutiveFailures = 0;
   probeInFlight = false;
   onDeadCallback = onDead;
@@ -39,6 +42,7 @@ export function armCameraHealth(onDead: () => void, probe: () => Promise<boolean
 /** Stop counting. Reports become no-ops until armed again. */
 export function disarmCameraHealth(): void {
   revision += 1;
+  lastTransferActivity = null;
   consecutiveFailures = 0;
   probeInFlight = false;
   onDeadCallback = null;
@@ -55,6 +59,11 @@ export function reportCameraFailure(): void {
   // While a probe is open the verdict is already being decided; further
   // failures must not open a second one.
   if (!onDeadCallback || probeInFlight) return;
+  if (
+    lastTransferActivity !== null &&
+    performance.now() - lastTransferActivity < TRANSFER_ACTIVITY_WINDOW_MS
+  )
+    return;
   consecutiveFailures += 1;
   if (consecutiveFailures < FAILURE_THRESHOLD) return;
   void runProbe();
@@ -89,4 +98,14 @@ async function runProbe(): Promise<void> {
   // Disarm before invoking so nothing can fire the callback a second time.
   disarmCameraHealth();
   callback();
+}
+
+/** Bytes prove liveness only for the session that started this transfer. */
+export function createHealthTransferReporter(): () => void {
+  const startedRevision = revision;
+  return () => {
+    if (!onDeadCallback || revision !== startedRevision) return;
+    lastTransferActivity = performance.now();
+    reportCameraSuccess();
+  };
 }

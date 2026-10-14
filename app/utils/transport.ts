@@ -30,6 +30,12 @@ export interface CameraTransport {
   fetch(url: string, init?: RequestInit): Promise<Response>;
   probe(host: string): Promise<boolean>;
   onDisconnect(handler: () => void): Promise<() => void>;
+  /**
+   * Capture the current session, then report received download bytes. Old
+   * reporters cannot extend a replacement session's keepalive tolerance.
+   * Optional for transports without a native keepalive (the browser demo).
+   */
+  createTransferActivityReporter?(): Promise<() => void>;
 }
 
 /**

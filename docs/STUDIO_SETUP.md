@@ -31,7 +31,7 @@ bun run build
 ```
 
 If Git reports overlapping local changes, stop and preserve them. Building
-requires the existing Rust/MSVC prerequisites, Bun, Python 3.11+ and internet.
+requires the existing Rust/MSVC prerequisites, Bun, 64-bit Python 3.11+ and internet.
 The build packages Python into the helper, tests its dependency imports, then
 creates local Windows MSI/NSIS bundles. Do not install or distribute those
 bundles yet. The native executable uses the same separate development identity.
@@ -49,7 +49,7 @@ one-file so the app supervises the actual process, not an extraction child.
 3. Choose Landscape, Portrait or upscaled Full HD. Start with Landscape 720p30,
    the conservative general-purpose preset. Source dimensions and measured
    cadence appear once the decoder is running.
-   **Native camera source** separately selects the camera's preview request.
+   The expandable **Advanced source settings** section separately selects the camera's preview request.
    Keep the tested baseline for normal use; 1080p30/60 and 4K30/60 are explicit
    experimental choices. A 60fps source choice also uses 60fps virtual output.
    Follow [SOURCE_PROFILE_TESTS.md](SOURCE_PROFILE_TESTS.md) for fixed-mode
@@ -103,7 +103,7 @@ later phases, not features in this build.
 Full HD uses a 1920×1080 output shape, scaling when source size differs. Mode
 matching is implemented, and native preview requests now have experimental
 profiles. Their availability is determined by measured delivered video, not by
-the selector's label; all higher native profiles still need hardware testing.
+the selector's label; the higher requests tested on this unit still delivered 720p at about 30fps.
 See [STUDIO_RESEARCH.md](STUDIO_RESEARCH.md) for evidence,
 mode/orientation recommendations and the hardware test gates.
 
@@ -139,8 +139,10 @@ app. This local-only export also works while disconnected and retains bounded
 native recovery history across preview restarts. See
 [DEVICE_DIAGNOSTICS.md](DEVICE_DIAGNOSTICS.md#capture-a-video-interruption) for
 the fields and a controlled comparison. A confirmed TCP header-fragmentation
-bug has been fixed; the cause of the user's particular dropout is still pending
-this evidence.
+bug has been fixed. On October 14 the user also confirmed that changing the
+camera sleep/power settings stopped the screen-related dropouts. The replacement
+values and test duration were not recorded; this is a user-reported improvement,
+not a measured long-duration acceptance pass.
 
 - Test a cold connection five times; record time to first picture and whether
   the automatic preview retry helps. The initial startup problem is not yet

@@ -4,6 +4,7 @@ import type { DownloadEntry, MediaItem } from "~/types/media";
 import { resetCameraTransport, setCameraTransport } from "~/utils/transport";
 import { makeFakeTransport } from "../helpers/fakeTransport";
 import { makeMediaItem } from "../helpers/media";
+import { streamCameraFileToDisk } from "~/utils/streamDownload";
 import { mountComposable } from "./harness";
 
 const CAMERA_BYTES = 4096;
@@ -26,6 +27,11 @@ const saveBlob = vi.hoisted(() =>
 const cacheRawPreviewFromBlob = vi.hoisted(() =>
   vi.fn(async (_item: MediaItem, _source: Blob): Promise<string | Blob | null> => null),
 );
+
+vi.mock("~/utils/streamDownload", async (importOriginal) => {
+  const original = await importOriginal<typeof import("~/utils/streamDownload")>();
+  return { ...original, streamCameraFileToDisk: vi.fn(original.streamCameraFileToDisk) };
+});
 
 vi.mock("~/utils/watermarkClient", () => ({ renderWatermarked }));
 vi.mock("~/utils/saveFile", () => ({ saveBlob, isTauri: () => false }));
@@ -64,10 +70,12 @@ describe("useDownloads", () => {
     renderWatermarked.mockClear();
     saveBlob.mockClear();
     cacheRawPreviewFromBlob.mockClear();
+    vi.mocked(streamCameraFileToDisk).mockClear();
     setCameraTransport(respondWith(CAMERA_BYTES));
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     resetCameraTransport();
     clearNuxtState(
       [
@@ -227,5 +235,79 @@ describe("useDownloads", () => {
     expect(saveBlob).not.toHaveBeenCalled();
     expect(downloads.queue.value[0]?.status).toBe("error");
     expect(downloads.queue.value[0]?.error).toBe("watermark render failed");
+  });
+
+  it("streams video downloads and records exact bytes without calling response.blob", async () => {
+    const response = new Response(new Uint8Array(CAMERA_BYTES), {
+      headers: { "content-length": String(CAMERA_BYTES) },
+    });
+    vi.spyOn(response, "blob").mockRejectedValue(new Error("whole-video buffering is forbidden"));
+    const reportBytes = vi.fn();
+    setCameraTransport(
+      makeFakeTransport({
+        fetch: vi.fn(async () => response),
+        createTransferActivityReporter: async () => reportBytes,
+      }),
+    );
+    const downloads = await mountComposable(() => useDownloads());
+    downloads.enqueue([makeMediaItem({ type: "video", name: "large.mp4", size: 0 })], {
+      watermark: false,
+    });
+    await settled(downloads.queue);
+    expect(downloads.queue.value[0]?.status).toBe("done");
+    expect(downloads.queue.value[0]?.downloadedBytes).toBe(CAMERA_BYTES);
+    expect(downloads.queue.value[0]?.totalBytes).toBe(CAMERA_BYTES);
+    expect(downloads.queue.value[0]?.item.size).toBe(CAMERA_BYTES);
+    expect(streamCameraFileToDisk).toHaveBeenCalledTimes(1);
+    expect(reportBytes).toHaveBeenCalled();
+  });
+
+  it("shows measured bytes and indeterminate progress until a video without a length finishes", async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+        },
+      }),
+    );
+    setCameraTransport(makeFakeTransport({ fetch: vi.fn(async () => response) }));
+    const downloads = await mountComposable(() => useDownloads());
+    downloads.enqueue([makeMediaItem({ type: "video", name: "unknown.mp4", size: 100_000 })], {
+      watermark: false,
+    });
+    controller.enqueue(new Uint8Array(5));
+    await vi.waitFor(() => expect(downloads.queue.value[0]?.downloadedBytes).toBe(5));
+    expect(downloads.queue.value[0]?.progress).toBeNull();
+    expect(downloads.queue.value[0]?.totalBytes).toBeNull();
+    controller.close();
+    await settled(downloads.queue);
+    expect(downloads.queue.value[0]?.status).toBe("done");
+    expect(downloads.queue.value[0]?.item.size).toBe(5);
+  });
+
+  it("aborts stalled headers and continues the rest of the queue", async () => {
+    const downloads = await mountComposable(() => useDownloads());
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const fetch = vi
+      .fn((_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      })
+      .mockImplementationOnce((_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      })
+      .mockImplementationOnce(async () => new Response(new Uint8Array(2)));
+    setCameraTransport(makeFakeTransport({ fetch }));
+    downloads.enqueue([makeMediaItem({ id: "stalled" }), makeMediaItem({ id: "next" })], {
+      watermark: false,
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(signal?.aborted).toBe(true);
+    expect(downloads.queue.value[0]?.status).toBe("error");
+    expect(downloads.queue.value[0]?.error).toContain("stopped sending");
+    expect(downloads.queue.value[1]?.status).toBe("done");
   });
 });

@@ -57,20 +57,28 @@ guide](docs/WEBCAM_BRIDGE.md), and [working handoff](docs/CODEX_HANDOFF.md).
   stream, including cached codec parameter sets and keyframe-aligned late joins.
 - **External stream URL** exposed from the Camera screen when the Annex-B
   control-session transport is active.
-- **Windows bridge prototype** using PyAV/FFmpeg decoding and pyvirtualcam, with
-  OBS and Unity Capture backends.
-- **Freshest-frame output** with reconnect backoff, letterboxing, mirroring,
-  and a decoder-only probe mode.
+- **Integrated Windows Studio** with bundled video engine, OBS driver detection,
+  webcam start/stop, landscape/portrait profiles, mirroring and upscaled Full HD.
+- **Freshest-frame output** with reconnect backoff, letterboxing, and a
+  decoder-only probe mode. A running webcam remains active during navigation.
+- **Guided OBS/Whatnot streaming** with microphone and broadcast configuration
+  handled in the destination application.
 - **Development identity** shown in the app together with version, channel, and
-  source commit.
+  source commit. The working upstream installation remains separate.
 
-Known webcam limitations are intentional and tracked:
+Start with the [Studio setup guide](docs/STUDIO_SETUP.md). The command-line
+bridge remains available for diagnostics; ordinary Studio use needs no terminal.
 
-- the stream currently belongs to the Camera page and stops on navigation;
-- MJPEG preview selection can bypass the Annex-B URL needed by the bridge;
-- silent health failures do not yet follow the full reconnect policy;
-- camera audio has not been established;
-- vertical Whatnot framing is not yet implemented.
+Current limits:
+
+- This unit has delivered HEVC preview around 720p/30fps; higher native source
+  requests did not increase measured quality. Full HD output scales the source.
+- Changing the camera's sleep/power settings stopped the user's reported
+  dropouts. Automatic remote keep-awake is not verified.
+- Camera audio, direct in-app broadcasting, USB video, and WGU/proctor acceptance
+  are not established. Use a separate microphone.
+- Clean-machine installation, long soak, Teams/Zoom and a real Whatnot show
+  still need acceptance testing. Public installers remain blocked by licensing.
 
 The detailed upstream feature and protocol map remains in
 [docs/FEATURES.md](docs/FEATURES.md). Items in that document describe upstream

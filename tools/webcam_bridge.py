@@ -217,11 +217,12 @@ def probe(av: Any, args: argparse.Namespace) -> int:
 
 @dataclass
 class DecodedFrame:
-    pixels: Any
+    frame: Any
     width: int
     height: int
     fps: float
     received_at: float
+    generation: int = 0
 
 
 def emit_event(args: argparse.Namespace, event: str, **data: Any) -> None:
@@ -250,10 +251,13 @@ def frame_pixels(frame: Any, width: int, height: int, mirror: bool, numpy: Any) 
         scaled_width = max(1, round(frame.width * scale))
         scaled_height = max(1, round(frame.height * scale))
         scaled = frame.reformat(width=scaled_width, height=scaled_height, format="rgb24")
-        pixels = numpy.zeros((height, width, 3), dtype=numpy.uint8)
-        left = (width - scaled_width) // 2
-        top = (height - scaled_height) // 2
-        pixels[top : top + scaled_height, left : left + scaled_width] = scaled.to_ndarray()
+        if scaled_width == width and scaled_height == height:
+            pixels = scaled.to_ndarray()
+        else:
+            pixels = numpy.zeros((height, width, 3), dtype=numpy.uint8)
+            left = (width - scaled_width) // 2
+            top = (height - scaled_height) // 2
+            pixels[top : top + scaled_height, left : left + scaled_width] = scaled.to_ndarray()
     if mirror:
         pixels = pixels[:, ::-1]
     return numpy.ascontiguousarray(pixels)
@@ -261,7 +265,6 @@ def frame_pixels(frame: Any, width: int, height: int, mirror: bool, numpy: Any) 
 
 def decode_latest(
     av: Any,
-    numpy: Any,
     args: argparse.Namespace,
     output: queue.Queue[DecodedFrame],
     stop: threading.Event,
@@ -270,9 +273,11 @@ def decode_latest(
     recovering = False
     target_width = args.width
     target_height = args.height
+    generation = 0
     while not stop.is_set():
         try:
             with open_stream(av, args) as container:
+                generation += 1
                 stream = container.streams.video[0]
                 rate = args.fps or detected_fps(stream)
                 received = False
@@ -286,7 +291,6 @@ def decode_latest(
                         recovering = False
                     if not target_width:
                         target_width, target_height = frame.width, frame.height
-                    pixels = frame_pixels(frame, target_width, target_height, args.mirror, numpy)
                     now = time.monotonic()
                     sample_frames += 1
                     sample_seconds = now - sample_started
@@ -298,7 +302,7 @@ def decode_latest(
                         sample_frames = 0
                     replace_latest(
                         output,
-                        DecodedFrame(pixels, target_width, target_height, rate, now),
+                        DecodedFrame(frame, target_width, target_height, rate, now, generation),
                     )
                     received = True
                     delay = 0.5
@@ -329,7 +333,7 @@ def run_virtual_camera(av: Any, args: argparse.Namespace) -> int:
     stop = threading.Event()
     worker = threading.Thread(
         target=decode_latest,
-        args=(av, numpy, args, latest, stop),
+        args=(av, args, latest, stop),
         name="luna-decoder",
         daemon=True,
     )
@@ -362,22 +366,46 @@ def run_virtual_camera(av: Any, args: argparse.Namespace) -> int:
                 f"{camera.device} ({getattr(camera, 'backend', args.backend)}).",
                 file=sys.stderr,
             )
-            emit_event(args, "publishing", device=camera.device, fps=camera.fps)
             current = first
+            pixels = None
+            published_generation = None
+            needs_conversion = True
+            conversion_failed = False
             stalled = False
-            slate = numpy.zeros_like(current.pixels)
+            slate = numpy.empty((first.height, first.width, 3), dtype=numpy.uint8)
             slate[:, :, :] = (17, 17, 24)
             while True:
                 try:
                     while True:
                         current = latest.get_nowait()
+                        needs_conversion = True
                 except queue.Empty:
                     pass
                 stale = time.monotonic() - current.received_at > 2
-                if stale != stalled:
-                    emit_event(args, "stalled" if stale else "resumed")
-                    stalled = stale
-                camera.send(slate if stale else current.pixels)
+                # Drop obsolete decoded frames before doing RGB conversion and
+                # scaling. Repeated output frames reuse their converted pixels.
+                if not stale and needs_conversion:
+                    needs_conversion = False
+                    try:
+                        pixels = frame_pixels(current.frame, current.width, current.height, args.mirror, numpy)
+                        conversion_failed = False
+                    except Exception as error:
+                        pixels = None
+                        if not conversion_failed:
+                            print(f"Frame conversion failed ({error}); waiting for a fresh decoded frame.", file=sys.stderr)
+                        conversion_failed = True
+                stale = stale or pixels is None
+                camera.send(slate if stale else pixels)
+                if stale:
+                    if not stalled:
+                        emit_event(args, "stalled")
+                else:
+                    if published_generation is None:
+                        emit_event(args, "publishing", device=camera.device, fps=camera.fps)
+                    elif stalled or current.generation != published_generation:
+                        emit_event(args, "resumed")
+                    published_generation = current.generation
+                stalled = stale
                 camera.sleep_until_next_frame()
     except KeyboardInterrupt:
         print("Stopping webcam bridge.", file=sys.stderr)

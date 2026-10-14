@@ -50,10 +50,11 @@ let renderer: THREE.WebGLRenderer | null = null;
 let controls: OrbitControls | null = null;
 let frame = 0;
 let disposeScene: (() => void) | null = null;
+let disposed = false;
 let bodyMaterial: THREE.MeshStandardMaterial | null = null;
 let observer: ResizeObserver | null = null;
 let spinStart: number | null = null;
-/** Render-loop gating: the scene auto-rotates, so it never idles on its own. */
+/** Draw only while visible and moving; stationary scenes redraw on changes. */
 let onScreen = true;
 let looping = false;
 let visibility: IntersectionObserver | null = null;
@@ -108,7 +109,27 @@ function applyColorway() {
     bodyMaterial.color.setHex(spec.color);
     bodyMaterial.roughness = spec.roughness;
     bodyMaterial.metalness = spec.metalness;
+    startLoop?.();
   }
+}
+
+function disposeModel(root: THREE.Object3D) {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    geometries.add(object.geometry);
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      materials.add(material);
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) textures.add(value);
+      }
+    }
+  });
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+  for (const texture of textures) texture.dispose();
 }
 
 onMounted(async () => {
@@ -125,7 +146,20 @@ onMounted(async () => {
   el.appendChild(renderer.domElement);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04);
+  scene.environment = environment.texture;
+  room.dispose();
+  pmrem.dispose();
+
+  // Navigation can unmount while the large scan is still downloading. Own the
+  // environment immediately, then release any late loader result separately.
+  disposeScene = () => {
+    disposeModel(scene);
+    scene.clear();
+    scene.environment = null;
+    environment.dispose();
+  };
 
   const key = new THREE.DirectionalLight(0xffffff, 1.4);
   key.position.set(3, 4, 2);
@@ -148,19 +182,29 @@ onMounted(async () => {
   try {
     // The official hi-fi scan (binary STL, geometry only) with the colorway material
     const geometry = await new STLLoader().loadAsync(stlUrl());
+    if (disposed) {
+      geometry.dispose();
+      return;
+    }
     geometry.rotateX(-Math.PI / 2);
     bodyMaterial = new THREE.MeshStandardMaterial(BODY_COLORS[resolvedColorway.value]);
     model = new THREE.Mesh(geometry, bodyMaterial);
     fitToView(model);
     emit("ready", "stl");
   } catch {
+    if (disposed) return;
     try {
       // Optional textured glTF at public/models/luna-ultra.glb takes this path
       const gltf = await new GLTFLoader().loadAsync(gltfFallbackUrl());
+      if (disposed) {
+        disposeModel(gltf.scene);
+        return;
+      }
       model = gltf.scene;
       fitToView(model);
       emit("ready", "gltf");
     } catch {
+      if (disposed) return;
       model = buildFallbackModel();
       emit("ready", "fallback");
     }
@@ -186,6 +230,7 @@ onMounted(async () => {
     camera.aspect = clientWidth / clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(clientWidth, clientHeight);
+    startLoop?.();
   }
   observer = new ResizeObserver(resize);
   observer.observe(el);
@@ -194,7 +239,6 @@ onMounted(async () => {
   const baseAutoRotateSpeed = controls.autoRotateSpeed;
   function animate() {
     if (!looping) return;
-    frame = requestAnimationFrame(animate);
     if (controls && spinStart !== null) {
       // Celebration: briefly boost the orbit auto-rotation and let it decay,
       // so the spin blends into the idle motion with no snapping
@@ -208,14 +252,16 @@ onMounted(async () => {
         controls.autoRotateSpeed = baseAutoRotateSpeed + 110 * Math.pow(1 - t, 2.4);
       }
     }
-    controls?.update();
+    const moving = controls?.update();
     renderer?.render(scene, camera);
+    if (controls?.autoRotate || moving) frame = requestAnimationFrame(animate);
+    else looping = false;
   }
   // The model auto-rotates forever, so without gating this draws every frame
   // for as long as the page is mounted — including while it sits scrolled out
   // of view in the stacked layout, or behind another window.
   function start() {
-    if (looping || !onScreen || document.hidden) return;
+    if (disposed || looping || !onScreen || document.hidden) return;
     looping = true;
     animate();
   }
@@ -225,6 +271,7 @@ onMounted(async () => {
   }
   startLoop = start;
   stopLoop = stop;
+  controls.addEventListener("change", start);
 
   visibility = new IntersectionObserver((entries) => {
     onScreen = entries.some((entry) => entry.isIntersecting);
@@ -234,21 +281,6 @@ onMounted(async () => {
   visibility.observe(el);
   document.addEventListener("visibilitychange", onVisibilityChange);
   start();
-
-  disposeScene = () => {
-    scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        for (const material of materials) material.dispose();
-      }
-    });
-    // The PMREM render target survives its generator, so releasing only the
-    // generator left the environment map on the GPU after every unmount.
-    scene.environment?.dispose();
-    scene.environment = null;
-    pmrem.dispose();
-  };
 });
 
 watch(resolvedColorway, applyColorway);
@@ -258,18 +290,25 @@ watch(
   (next, prev) => {
     if (next > (prev ?? 0) && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       spinStart = performance.now();
+      startLoop?.();
     }
   },
 );
 
 onBeforeUnmount(() => {
+  disposed = true;
   looping = false;
   cancelAnimationFrame(frame);
   document.removeEventListener("visibilitychange", onVisibilityChange);
   visibility?.disconnect();
   observer?.disconnect();
   controls?.dispose();
+  controls = null;
   disposeScene?.();
+  disposeScene = null;
+  bodyMaterial = null;
+  startLoop = null;
+  stopLoop = null;
   renderer?.dispose();
   renderer?.domElement.remove();
   renderer = null;

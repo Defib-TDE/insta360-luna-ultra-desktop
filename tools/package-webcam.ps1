@@ -14,6 +14,8 @@ if (-not (Test-Path $Python)) {
     }
     if ($LASTEXITCODE -ne 0) { throw "Install Python 3.11 or newer to build the bundled webcam helper." }
 }
+& $Python -c "import struct, sys; sys.exit(0 if sys.version_info >= (3, 11) and struct.calcsize('P') == 8 else 1)"
+if ($LASTEXITCODE -ne 0) { throw "The bundled webcam helper requires 64-bit Python 3.11 or newer. Recreate .venv-webcam-build with a compatible Python interpreter." }
 & $Python -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "webcam-requirements.txt") "pyinstaller>=6.16,<7"
 if ($LASTEXITCODE -ne 0) { throw "Webcam build dependency installation failed." }
 $Output = Join-Path $RepoRoot "src-tauri\resources\webcam"

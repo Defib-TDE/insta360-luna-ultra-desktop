@@ -452,9 +452,9 @@ async fn serve_client(
     }
 
     let snapshot = bootstrap.lock().unwrap().snapshot();
-    let through_sequence = snapshot.through_sequence;
+    let mut through_sequence = snapshot.through_sequence;
     let mut ready = snapshot.ready;
-    if write_bootstrap(&mut socket, &snapshot).await.is_err() {
+    if ready && write_bootstrap(&mut socket, &snapshot).await.is_err() {
         return;
     }
 
@@ -472,11 +472,29 @@ async fn serve_client(
                         diagnostics.events.note("Decoder client rejoining after source headers changed or source packets were lost.");
                         return;
                     }
-                    if packet.sequence <= through_sequence || (!ready && !packet.keyframe) {
+                    if packet.sequence <= through_sequence {
                         continue;
                     }
-                    if packet.keyframe {
+                    if !ready {
+                        if !packet.keyframe {
+                            continue;
+                        }
+                        // Headers may have arrived after this client joined.
+                        // Take one coherent bootstrap, including the current
+                        // GOP, instead of sending a bare first keyframe.
+                        let fresh = bootstrap.lock().unwrap().snapshot();
+                        if fresh.generation != snapshot.generation {
+                            return;
+                        }
+                        if !fresh.ready {
+                            continue;
+                        }
+                        through_sequence = fresh.through_sequence;
+                        if write_bootstrap(&mut socket, &fresh).await.is_err() {
+                            return;
+                        }
                         ready = true;
+                        continue;
                     }
                     if socket.write_all(&packet.data).await.is_err() {
                         break;
@@ -1136,6 +1154,65 @@ mod tests {
         bootstrap.ingest(7, nal(21, 0x77));
         assert!(bootstrap.snapshot().ready);
         assert_eq!(bootstrap.snapshot().chunks.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn early_clients_receive_complete_headers_before_the_first_keyframe() {
+        for codec in [Codec::H264, Codec::H265] {
+            // Exercise a cold join and a join after only the first parameter set.
+            for initial_headers in [0, 1] {
+                let nal = |kind: u8, byte: u8| match codec {
+                    Codec::H264 => h264(kind, byte),
+                    Codec::H265 => Arc::<[u8]>::from(vec![0, 0, 0, 1, kind << 1, 1, byte]),
+                };
+                let headers = match codec {
+                    Codec::H264 => vec![nal(7, 0x11), nal(8, 0x22)],
+                    Codec::H265 => vec![nal(32, 0x11), nal(33, 0x22), nal(34, 0x33)],
+                };
+                let keyframe = nal(if codec == Codec::H264 { 5 } else { 19 }, 0x44);
+                let delta = nal(1, 0x55);
+                let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+                let address = listener.local_addr().unwrap();
+                let (stream_tx, _) = broadcast::channel(16);
+                let bootstrap = Arc::new(StdMutex::new(Bootstrap::default()));
+                for (index, header) in headers.iter().take(initial_headers).enumerate() {
+                    bootstrap.lock().unwrap().ingest(index as u64 + 1, Arc::clone(header));
+                }
+                let (shutdown, shutdown_rx) = watch::channel(false);
+                let server = tokio::spawn(serve(
+                    listener,
+                    stream_tx.clone(),
+                    Arc::clone(&bootstrap),
+                    shutdown_rx,
+                    Arc::default(),
+                ));
+                let mut client = TcpStream::connect(address).await.unwrap();
+                client.write_all(b"GET /stream HTTP/1.1\r\n\r\n").await.unwrap();
+                // The response establishes the client subscription before any video arrives.
+                let mut head = vec![0; response_head().len()];
+                client.read_exact(&mut head).await.unwrap();
+                let mut sequence = initial_headers as u64;
+                for payload in headers.iter().skip(initial_headers).chain([&keyframe, &delta]) {
+                    sequence += 1;
+                    let (keyframe, generation) = {
+                        let mut saved = bootstrap.lock().unwrap();
+                        let keyframe = saved.ingest(sequence, Arc::clone(payload));
+                        (keyframe, saved.generation)
+                    };
+                    assert!(stream_tx.send(StreamPacket {
+                        generation, sequence, keyframe, data: Arc::clone(payload),
+                    }).is_ok());
+                }
+                let expected: Vec<u8> = headers.iter().chain([&keyframe, &delta])
+                    .flat_map(|chunk| chunk.iter().copied()).collect();
+                let mut actual = vec![0; expected.len()];
+                let received = tokio::time::timeout(Duration::from_secs(1), client.read_exact(&mut actual)).await;
+                shutdown.send(true).unwrap();
+                server.await.unwrap();
+                assert!(matches!(received, Ok(Ok(_))), "missing headers for {codec:?} with {initial_headers} cached: {actual:?}");
+                assert_eq!(actual, expected, "headers must precede the first decodable GOP");
+            }
+        }
     }
 
     #[tokio::test]

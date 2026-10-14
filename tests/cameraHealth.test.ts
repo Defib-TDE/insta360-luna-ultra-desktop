@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FAILURE_THRESHOLD,
+  createHealthTransferReporter,
   armCameraHealth,
   disarmCameraHealth,
   reportCameraFailure,
@@ -18,6 +19,7 @@ const deadProbe = () => Promise.resolve(false);
 describe("cameraHealth", () => {
   beforeEach(() => {
     disarmCameraHealth();
+    vi.restoreAllMocks();
   });
 
   it("ignores a failed probe if a camera response arrived while it was open", async () => {
@@ -189,6 +191,61 @@ describe("cameraHealth", () => {
     for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
     disarmCameraHealth();
     release(false);
+    await flush();
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
+  it("tolerates failed probes only while bytes have arrived recently", async () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(100_000);
+    const onDead = vi.fn();
+    const probe = vi.fn(deadProbe);
+    armCameraHealth(onDead, probe);
+    const receivedBytes = createHealthTransferReporter();
+    receivedBytes();
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    await flush();
+    expect(probe).not.toHaveBeenCalled();
+    expect(onDead).not.toHaveBeenCalled();
+    clock.mockReturnValue(190_000);
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    await flush();
+    expect(onDead).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not grant a tolerance window just because a transfer was created", async () => {
+    const onDead = vi.fn();
+    armCameraHealth(onDead, deadProbe);
+    createHealthTransferReporter();
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    await flush();
+    expect(onDead).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores transfer reports belonging to an earlier connection", async () => {
+    armCameraHealth(vi.fn(), deadProbe);
+    const oldBytes = createHealthTransferReporter();
+    const onDead = vi.fn();
+    armCameraHealth(onDead, deadProbe);
+    oldBytes();
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    await flush();
+    expect(onDead).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a failed in-flight probe when transfer bytes arrive", async () => {
+    const onDead = vi.fn();
+    let resolve!: (alive: boolean) => void;
+    armCameraHealth(
+      onDead,
+      () =>
+        new Promise<boolean>((done) => {
+          resolve = done;
+        }),
+    );
+    const receivedBytes = createHealthTransferReporter();
+    for (let i = 0; i < FAILURE_THRESHOLD; i++) reportCameraFailure();
+    receivedBytes();
+    resolve(false);
     await flush();
     expect(onDead).not.toHaveBeenCalled();
   });

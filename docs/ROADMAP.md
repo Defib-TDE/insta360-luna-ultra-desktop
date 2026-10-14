@@ -36,8 +36,15 @@ protocol, stream format, capture mode, or webcam relay behavior.
 - Exercise cold start, stop/restart, Wi-Fi loss/recovery, and a sustained run.
 
 Hardware observations must be labelled separately from simulated tests.
+The user has verified HEVC decoding, Chrome/Discord publication, stop/restart,
+Wi-Fi recovery and initial integrated Studio use. Changing camera sleep/power
+settings stopped the reported screen-related dropouts. Latency, a timed hour-long
+soak, Teams/Zoom and real Whatnot broadcasting remain open.
 
 ## Phase 2 — stream reliability
+
+Implemented below except authenticated/bounded loopback access, which remains a
+separate hardening task. Automated coverage does not replace a hardware soak.
 
 - Move webcam stream ownership out of the Camera page.
 - Select one explicit webcam source independently of the UI preview transport.
@@ -50,6 +57,10 @@ Hardware observations must be labelled separately from simulated tests.
 
 ## Phase 3 — integrated webcam experience
 
+Implemented for Windows/OBS. The engine is bundled by Windows packaging; Studio
+owns active output across navigation. Clean-machine installation and driver
+failure recovery still need Windows acceptance.
+
 - Start and stop webcam output from the desktop interface.
 - Detect supported Windows virtual-camera backends.
 - Replace per-launch dependency installation with a controlled runtime.
@@ -58,12 +69,17 @@ Hardware observations must be labelled separately from simulated tests.
 
 ## Phase 4 — livestream and Whatnot workflows
 
-- Add portrait 9:16 crop/reframe, rotation, mirroring, and safe-area controls.
+- Portrait 9:16 aspect-fit output and mirroring are implemented; crop-to-fill,
+  rotation and safe-area controls remain future work.
 - Document OBS scene setup and validate the Whatnot workflow.
 - Evaluate direct RTMP output only after webcam stability is established.
 - Investigate camera audio as a separate, explicitly synchronized path.
 
 ## Phase 5 — expanded camera control
+
+Mode preparation with readback and fixed-mode compatibility are implemented.
+Automatic keep-awake needs a verified command and reversible session behavior;
+see [the October build review](BUILD_REVIEW_2026-10-14.md).
 
 - Keep a fixed-mode compatibility option.
 - Stabilize remote mode switching.

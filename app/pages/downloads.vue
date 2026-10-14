@@ -59,8 +59,17 @@ const hasFinished = computed(() =>
           class="flex items-center gap-4 rounded-xl border border-default bg-elevated/40 p-3"
         >
           <div class="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+            <span
+              v-if="
+                entry.item.type === 'video' &&
+                (entry.status === 'queued' || entry.status === 'downloading')
+              "
+              class="flex size-full items-center justify-center"
+            >
+              <UIcon name="i-lucide-video" class="size-6 text-dimmed" />
+            </span>
             <VideoThumb
-              v-if="entry.item.type === 'video'"
+              v-else-if="entry.item.type === 'video'"
               :src="entry.item.srcUrl"
               :lrv="entry.item.lrvUrl"
               img-class="size-full object-cover"
@@ -108,7 +117,16 @@ const hasFinished = computed(() =>
             <p v-else-if="entry.status === 'error'" class="truncate text-xs text-error">
               {{ entry.error }}
             </p>
-            <UProgress v-else :model-value="entry.progress" size="sm" class="max-w-64" />
+            <template v-else>
+              <UProgress :model-value="entry.progress ?? undefined" size="sm" class="max-w-64" />
+              <p
+                v-if="entry.status === 'downloading'"
+                class="font-mono text-xs text-muted tabular-nums"
+              >
+                {{ formatBytes(entry.downloadedBytes) }}
+                <span v-if="entry.totalBytes"> / {{ formatBytes(entry.totalBytes) }}</span>
+              </p>
+            </template>
           </div>
 
           <div class="shrink-0">
@@ -126,9 +144,9 @@ const hasFinished = computed(() =>
               icon="i-lucide-rotate-cw"
               @click="retry(entry.id)"
             />
-            <span v-else class="font-mono text-xs text-muted tabular-nums"
-              >{{ entry.progress }}%</span
-            >
+            <span v-else class="font-mono text-xs text-muted tabular-nums">
+              {{ entry.progress === null ? "Downloading…" : `${entry.progress}%` }}
+            </span>
           </div>
         </div>
       </div>

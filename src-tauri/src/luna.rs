@@ -53,6 +53,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(3);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(3);
 const RECEIVE_GRACE: Duration = Duration::from_secs(12);
+// Byte activity can excuse a busy camera's status timeout, never a known
+// closed control socket. The window expires even if a webview abandons a transfer.
+const TRANSFER_ACTIVITY_WINDOW: Duration = Duration::from_secs(90);
 
 /// Insta360's packet checksum, appended little-endian to every UCD2 FILE
 /// frame. A nonstandard CRC-32 variant (poly 0x04C11DB7): each input byte is
@@ -357,6 +360,7 @@ struct SessionHealth {
     closed: AtomicBool,
     last_received: StdMutex<Instant>,
     last_video: StdMutex<Option<Instant>>,
+    last_transfer_activity: StdMutex<Option<Instant>>,
     command_timeouts: AtomicU64,
 }
 
@@ -366,12 +370,23 @@ impl Default for SessionHealth {
             closed: AtomicBool::new(false),
             last_received: StdMutex::new(Instant::now()),
             last_video: StdMutex::new(None),
+            last_transfer_activity: StdMutex::new(None),
             command_timeouts: AtomicU64::new(0),
         }
     }
 }
 
 impl SessionHealth {
+    fn tolerates_probe_failure(&self) -> bool {
+        !self.closed.load(Ordering::Relaxed)
+            && (self.recently_received()
+                || self
+                    .last_transfer_activity
+                    .lock()
+                    .unwrap()
+                    .is_some_and(|at| at.elapsed() < TRANSFER_ACTIVITY_WINDOW))
+    }
+
     fn recently_received(&self) -> bool {
         !self.closed.load(Ordering::Relaxed)
             && self.last_received.lock().unwrap().elapsed() < RECEIVE_GRACE
@@ -515,6 +530,21 @@ pub struct LunaState {
 }
 
 impl LunaState {
+    async fn transfer_activity(&self, generation: Option<u64>) -> u64 {
+        // Connect/disconnect update the generation under this same lock. A
+        // late report from the old file request must not mark the new session.
+        let guard = self.session.lock().await;
+        let current = self.generation.load(Ordering::Relaxed);
+        if generation == Some(current) {
+            if let Some(session) = guard.as_ref() {
+                if !session.health.closed.load(Ordering::Relaxed) {
+                    *session.health.last_transfer_activity.lock().unwrap() = Some(Instant::now());
+                }
+            }
+        }
+        current
+    }
+
     /// The live control session, if one is open.
     pub(crate) async fn session(&self) -> Option<Arc<Session>> {
         self.session.lock().await.as_ref().cloned()
@@ -542,9 +572,15 @@ async fn keepalive_tick(session: &Session) -> Result<(), String> {
     if session.health.recently_received() {
         return Ok(());
     }
-    session
+    if let Err(error) = session
         .send_command(CODE_GET_CURRENT_CAPTURE_STATUS, &[], Duration::from_secs(2))
-        .await?;
+        .await
+    {
+        // Re-check after the probe: bytes may have arrived while it waited.
+        if !session.health.tolerates_probe_failure() {
+            return Err(error);
+        }
+    }
     Ok(())
 }
 
@@ -757,6 +793,16 @@ pub async fn luna_disconnect(state: State<'_, LunaState>) -> Result<(), String> 
     }
     state.events.note("Control connection stopped by the app.");
     Ok(())
+}
+
+/// Capture a session token without reporting activity when generation is absent.
+/// A subsequent report marks bytes only on the same still-open connection.
+#[tauri::command]
+pub async fn luna_transfer_activity(
+    state: State<'_, LunaState>,
+    generation: Option<u64>,
+) -> Result<u64, String> {
+    Ok(state.transfer_activity(generation).await)
 }
 
 #[tauri::command]
@@ -1126,6 +1172,40 @@ pub(crate) mod tests {
         assert!(!session.health.recently_received());
         assert_eq!(session.health.command_timeouts.load(Ordering::Relaxed), 1);
         assert!(session.pending.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn transfer_activity_is_bounded_and_cannot_hide_a_closed_socket() {
+        let (session, _camera) = test_session().await;
+        *session.health.last_received.lock().unwrap() = Instant::now() - RECEIVE_GRACE;
+        assert!(!session.health.tolerates_probe_failure());
+        *session.health.last_transfer_activity.lock().unwrap() = Some(Instant::now());
+        assert!(session.health.tolerates_probe_failure());
+        keepalive_tick(&session).await.unwrap();
+
+        *session.health.last_transfer_activity.lock().unwrap() =
+            Some(Instant::now() - TRANSFER_ACTIVITY_WINDOW);
+        assert!(!session.health.tolerates_probe_failure());
+        assert!(keepalive_tick(&session).await.unwrap_err().contains("timed out"));
+
+        *session.health.last_transfer_activity.lock().unwrap() = Some(Instant::now());
+        session.health.closed.store(true, Ordering::Relaxed);
+        assert!(!session.health.tolerates_probe_failure());
+        assert!(keepalive_tick(&session).await.unwrap_err().contains("closed"));
+    }
+
+    #[tokio::test]
+    async fn transfer_reports_cannot_keep_a_replacement_connection_alive() {
+        let (session, _camera) = test_session().await;
+        let state = LunaState::default();
+        *state.session.lock().await = Some(Arc::clone(&session));
+        state.generation.store(5, Ordering::Relaxed);
+        assert_eq!(state.transfer_activity(None).await, 5);
+        assert!(session.health.last_transfer_activity.lock().unwrap().is_none());
+        state.transfer_activity(Some(4)).await;
+        assert!(session.health.last_transfer_activity.lock().unwrap().is_none());
+        state.transfer_activity(Some(5)).await;
+        assert!(session.health.last_transfer_activity.lock().unwrap().is_some());
     }
 
     #[tokio::test]

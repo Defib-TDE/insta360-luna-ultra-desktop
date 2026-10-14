@@ -5,9 +5,6 @@
   "workspaces": [
     "docs/site"
   ],
-  "overrides": {
-    "simple-git": "4.0.2"
-  },
   "type": "module",
   "scripts": {
     "build": "tauri build",
@@ -28,6 +25,8 @@
     "audit:critical": "bun audit --production --audit-level=critical"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "@iconify-json/lucide": "^1.2.139",
     "@iconify-json/simple-icons": "^1.2.98",
     "@nuxt/ui": "^4.11.3",
@@ -51,6 +50,9 @@
     "typescript": "^5.9.0",
     "vitest": "^4.1.11",
     "vue-tsc": "^3.3.12"
+  },
+  "overrides": {
+    "simple-git": "4.0.2"
   },
   "lint-staged": {
     "**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue}": [

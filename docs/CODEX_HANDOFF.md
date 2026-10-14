@@ -1,6 +1,6 @@
 # Codex handoff: webcam bridge
 
-Updated 2026-10-05 on branch `feature/webcam-bridge` from base
+Updated 2026-10-14 on branch `feature/webcam-bridge` from base
 `696435417eac33d77c4d1fbbd1b4015df0933ca9` (`v0.3.2`). Phase 0 safety and
 maintenance work is documented in [`ROADMAP.md`](ROADMAP.md).
 
@@ -14,6 +14,47 @@ keep the existing settings. Shooting orientation remains camera-controlled.
 Guided OBS streaming is included; direct in-app broadcasting, camera
 audio, and broader camera-control work remain later phases.
 See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
+
+## October 14 build review and improvements
+
+- Review started from clean fork `c70d94d`; no newer fork commits existed.
+  Upstream v0.3.3 (`11b1acb`) adds the large-download fix in `d9cfd0d`.
+  Adapted its streaming approach with attribution, preserving this fork's
+  identity, protocol recovery and generation-safe session ownership.
+- User confirms **changing camera sleep/power settings stopped the dropouts**.
+  Original values were 90-second screen sleep / 3-minute power off; replacement
+  values and test duration remain unspecified. Automatic keep-awake is not
+  verified. Official Bluetooth wake is documented for iOS, not a Windows
+  keep-awake lease. No speculative power commands are added.
+- Studio now puts readiness and Start/Stop first, shows nearby errors, collapses
+  experimental source settings and distinguishes measured source from output.
+  Full HD is explicitly upscaled. Connect now introduces the webcam workflow.
+- Bundled engines are launch-checked with a deadline; damaged release bundles
+  offer repair guidance instead of unrelated Python setup. PowerShell setup
+  stops on failed native commands and requires 64-bit Python >=3.11 for packaging.
+- Webcam conversion selects the latest decoded frame before RGB conversion,
+  reuses repeats and avoids a same-aspect padding copy. Bad conversions recover
+  on a fresh frame; publishing/resumed events follow actual successful sends.
+- Relay clients joining before initial headers now receive the complete
+  H.264/HEVC bootstrap. A real TCP regression failed before the fix.
+- Video downloads stream into partial files with progress, bounded reads,
+  short-write handling and cleanup. Photo watermarking stays intact. Only
+  recent received bytes from the same connection extend keepalive tolerance;
+  closed sockets still disconnect immediately.
+- Model lifecycle tests reproduced and fixed null-renderer access and late
+  resource leaks on navigation. Stationary/reduced-motion models idle. In-flight
+  asset downloads are not aborted; late results are disposed safely.
+- Bundled Geist fonts and explicit dynamic icons remove UI internet dependence.
+  Production dependency audit fell from 10 findings including one critical to
+  5 remaining findings (2 high, 3 moderate), recorded without audit ignores.
+- Local verification: **383 unit + 71 Nuxt + 43 Rust + 16 Python tests passed**;
+  typecheck, deny-warning lint, frozen install, critical audit, app generation
+  and docs generation passed (0 link errors, 105 existing trailing-slash
+  warnings). Independent source review found no actionable issues. Hosted
+  Windows build/installer checks are the next verification step; do not confuse
+  these local simulations with a new hardware acceptance pass.
+- Read [BUILD_REVIEW_2026-10-14.md](BUILD_REVIEW_2026-10-14.md) for findings,
+  synthetic processing measurements, source references and remaining gates.
 
 ## Screen-wake interruption (2026-10-05)
 

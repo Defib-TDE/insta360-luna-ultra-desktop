@@ -4,6 +4,7 @@ export interface WebcamEnvironment {
   runtimeReady: boolean;
   obsInstalled: boolean;
   bundled: boolean;
+  runtimeError?: string | null;
 }
 
 export interface WebcamStatus {

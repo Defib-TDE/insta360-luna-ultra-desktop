@@ -36,3 +36,10 @@ and asset owners provide suitable terms:
    using draft, prerelease artifacts only.
 5. Add platform signing, provenance, checksums, and an explicit approval gate.
 6. Review the result before reintroducing any tag-triggered publication.
+
+## Bundled font notice
+
+The UI now packages `@fontsource-variable/geist` and
+`@fontsource-variable/geist-mono` 5.3.0 for offline use. Preserve their bundled
+SIL Open Font License notices in the eventual third-party notices package.
+This does not resolve the separate upstream code/camera-model licensing gate.

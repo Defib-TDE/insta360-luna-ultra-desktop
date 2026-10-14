@@ -4,6 +4,13 @@ import { cacheRawPreviewFromBlob, isRawPhoto } from "~/utils/rawPreviewCache";
 import { renderWatermarked } from "~/utils/watermarkClient";
 import { saveBlob } from "~/utils/saveFile";
 import { getCameraTransport } from "~/utils/transport";
+import {
+  cameraBodyLength,
+  readCameraBody,
+  streamCameraFileToDisk,
+  TRANSFER_STALL_MS,
+  withStallTimeout,
+} from "~/utils/streamDownload";
 
 export function useDownloads() {
   const queue = useState<DownloadEntry[]>("download-queue", () => []);
@@ -29,27 +36,60 @@ export function useDownloads() {
         running.value = false;
         return;
       }
-      patch(entry.id, { status: "downloading", progress: 4 });
+      patch(entry.id, {
+        status: "downloading",
+        progress: null,
+        downloadedBytes: 0,
+        totalBytes: null,
+      });
+      const controller = new AbortController();
       try {
-        const response = await getCameraTransport().fetch(entry.item.srcUrl);
-        if (!response.ok) throw new Error(`Camera transfer failed (${response.status})`);
-        patch(entry.id, { progress: 45 });
-        const source = await response.blob();
+        const transport = getCameraTransport();
+        const reportActivity = await transport.createTransferActivityReporter?.();
+        const response = await withStallTimeout(
+          transport.fetch(entry.item.srcUrl, { signal: controller.signal }),
+          TRANSFER_STALL_MS,
+          () => controller.abort(),
+        );
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => {});
+          throw new Error(`Camera transfer failed (${response.status})`);
+        }
+        const total = cameraBodyLength(response);
+        const progress = (received: number, length: number | null) => {
+          reportActivity?.();
+          patch(entry.id, {
+            downloadedBytes: received,
+            totalBytes: length,
+            // Saving/renaming has to finish before the row can reach 100%.
+            progress: length ? Math.min(99, Math.floor((received / length) * 100)) : null,
+          });
+        };
+        patch(entry.id, { totalBytes: total });
+        if (entry.item.type === "video") {
+          const result = await streamCameraFileToDisk(response, entry.item.name, progress);
+          recordSize(entry.item, result.size);
+          patch(entry.id, { status: "done", progress: 100, savedTo: result.savedTo });
+          continue;
+        }
+        let received = 0;
+        const source = await readCameraBody(response, {
+          onChunk(chunk) {
+            received += chunk.byteLength;
+            progress(received, total);
+          },
+        });
         let blob = source;
-        // Measured before the watermark pass: this is the file's size on the
-        // camera, not the size of what we are about to write to disk.
+        // Photos keep their buffer for watermarking and the RAW preview cache.
         recordSize(entry.item, source.size);
-        patch(entry.id, { progress: 70 });
-        // Renderable photos only: RAW is `type: "photo"` too, but the canvas
-        // pipeline cannot decode it, so it saves unmodified (issue #2).
         if (entry.watermarked && canWatermark(entry.item)) {
           blob = await renderWatermarked(blob, settings.value);
         }
-        patch(entry.id, { progress: 90 });
         const savedTo = await saveBlob(blob, entry.item.name);
         patch(entry.id, { status: "done", progress: 100, savedTo });
         await seedRawPreview(entry.item, source);
       } catch (error) {
+        controller.abort();
         patch(entry.id, {
           status: "error",
           error: error instanceof Error ? error.message : "Transfer failed",
@@ -62,7 +102,7 @@ export function useDownloads() {
    * Record the transferred byte count. On firmware that disabled the HTTP
    * autoindex the library comes from GET_FILE_LIST, which reports no size, so
    * a downloaded file is the only place a real byte count ever appears — the
-   * Downloads row would otherwise read `0 B`. `blob.size` is exact and needs
+   * Downloads row would otherwise read `0 B`. Counting received bytes is exact and needs
    * no `content-length` support, and it also beats the index listing's rounded
    * "18M", so it wins over whatever the item carried.
    *
@@ -100,7 +140,7 @@ export function useDownloads() {
 
   /**
    * Update one entry in place. Rebuilding the array instead re-ran every
-   * queue-wide computed on each progress tick — five times per file, against a
+   * queue-wide computed on each progress tick, against a
    * list that grows with the batch. Vue tracks the mutated fields directly, so
    * a progress change now only invalidates what actually reads progress.
    */
@@ -116,6 +156,8 @@ export function useDownloads() {
       item,
       status: "queued",
       progress: 0,
+      downloadedBytes: 0,
+      totalBytes: null,
       watermarked: options.watermark,
       startedAt: stamp + index,
     }));
@@ -133,7 +175,13 @@ export function useDownloads() {
   }
 
   function retry(id: string) {
-    patch(id, { status: "queued", progress: 0, error: undefined });
+    patch(id, {
+      status: "queued",
+      progress: 0,
+      downloadedBytes: 0,
+      totalBytes: null,
+      error: undefined,
+    });
     if (!running.value) {
       running.value = true;
       void processNext();

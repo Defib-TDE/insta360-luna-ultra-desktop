@@ -4,6 +4,7 @@ import { openStudioHelp } from "~/utils/webcamClient";
 import { collectCameraReport, collectConnectionReport } from "~/utils/cameraReport";
 import { saveBlob } from "~/utils/saveFile";
 import { PREVIEW_PROFILES, previewVerdict } from "~/utils/previewProfiles";
+import { studioReadiness } from "~/utils/studioReadiness";
 
 useHead({ title: "Studio" });
 const camera = useCamera();
@@ -24,7 +25,6 @@ const {
   error,
   wanted,
   publishing,
-  running,
   check,
   setup,
   start,
@@ -40,19 +40,21 @@ const outputStyle = computed(() => ({
   aspectRatio: `${profile.value.width} / ${profile.value.height}`,
 }));
 const busy = computed(() => status.value.phase === "installing");
-const ready = computed(() => environment.value?.runtimeReady && environment.value?.obsInstalled);
-const statusLabel = computed(() => {
-  if (preparing.value) return "Preparing camera mode";
-  if (wanted.value && !camera.isConnected.value) return "Reconnecting camera";
-  return {
-    stopped: "Ready when you are",
-    installing: "Preparing webcam",
-    starting: "Starting output",
-    publishing: "Webcam on",
-    reconnecting: "Recovering video",
-    error: "Output needs attention",
-  }[status.value.phase];
-});
+const primaryError = computed(
+  () => error.value ?? status.value.error ?? live.error.value ?? camera.error.value,
+);
+const readiness = computed(() =>
+  studioReadiness({
+    environment: environment.value,
+    checking: checking.value,
+    phase: status.value.phase,
+    connected: camera.isConnected.value,
+    connecting: camera.isBusy.value,
+    wanted: wanted.value,
+    preparing: preparing.value,
+    error: primaryError.value,
+  }),
+);
 const framingHint = computed(() => {
   if (!status.value.sourceWidth || !status.value.sourceHeight) return null;
   const vertical = status.value.sourceHeight > status.value.sourceWidth;
@@ -64,7 +66,9 @@ const framingHint = computed(() => {
 const sourceLabel = computed(() =>
   wanted.value && status.value.sourceWidth
     ? `${status.value.sourceWidth} × ${status.value.sourceHeight}`
-    : "Awaiting video",
+    : wanted.value
+      ? "Awaiting video"
+      : "Not measured",
 );
 
 async function copyDevice() {
@@ -145,46 +149,199 @@ async function exportConnectionReport() {
       <UDashboardNavbar title="Studio">
         <template #leading><UDashboardSidebarCollapse /></template>
         <template #right>
-          <span class="flex items-center gap-2 text-xs text-muted" role="status" aria-live="polite">
-            <span
-              class="size-2 rounded-full"
-              :class="publishing ? 'bg-emerald-400' : running ? 'bg-amber-400' : 'bg-neutral-400'"
-            />
-            {{ statusLabel }}
-          </span>
-        </template>
-      </UDashboardNavbar>
-    </template>
-
-    <template #body>
-      <div class="studio-surface mx-auto w-full max-w-[1440px] space-y-6 pb-6">
-        <header class="flex flex-wrap items-end justify-between gap-4">
-          <div class="space-y-2">
-            <p
-              class="text-[10px] font-semibold tracking-[0.24em] text-violet-500 dark:text-violet-300"
-            >
-              LUNA / STUDIO
-            </p>
-            <h1 class="text-3xl font-semibold tracking-tight text-highlighted">
-              Your camera. A bigger stage.
-            </h1>
-            <p class="text-sm text-muted">
-              A beautiful feed, ready for your next call or live show.
-            </p>
-          </div>
           <UButton
             to="/camera"
             label="Camera controls"
             icon="i-lucide-sliders-horizontal"
             color="neutral"
             variant="ghost"
+            size="sm"
           />
+        </template>
+      </UDashboardNavbar>
+    </template>
+
+    <template #body>
+      <div class="studio-surface mx-auto w-full max-w-[1440px] space-y-5 pb-6">
+        <header class="space-y-1">
+          <p
+            class="text-[10px] font-semibold tracking-[0.2em] text-violet-500 dark:text-violet-300"
+          >
+            LUNA / STUDIO
+          </p>
+          <h1 class="text-2xl font-semibold tracking-tight text-highlighted">
+            Your camera, everywhere.
+          </h1>
+          <p class="text-sm text-muted">
+            Set your frame. Start your webcam. Open your favorite app.
+          </p>
         </header>
+
+        <section
+          class="rounded-2xl border border-violet-400/25 bg-default/90 p-4 shadow-sm"
+          aria-label="Webcam setup and output"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex min-w-0 items-start gap-3" role="status" aria-live="polite">
+              <span
+                class="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                :class="
+                  readiness.tone === 'success'
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : readiness.tone === 'error' || readiness.tone === 'warning'
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      : 'bg-violet-500/10 text-violet-500 dark:text-violet-300'
+                "
+                ><UIcon :name="readiness.icon" class="size-5"
+              /></span>
+              <div class="min-w-0 space-y-1">
+                <h2 class="text-sm font-semibold text-highlighted">{{ readiness.label }}</h2>
+                <p class="max-w-xl text-xs leading-relaxed text-muted">
+                  {{ readiness.description }}
+                </p>
+              </div>
+            </div>
+            <UButton
+              class="shrink-0 justify-center rounded-xl px-5 py-3"
+              size="lg"
+              :color="wanted ? 'neutral' : 'primary'"
+              :variant="wanted ? 'outline' : 'solid'"
+              :icon="wanted ? 'i-lucide-square' : 'i-lucide-video'"
+              :label="wanted ? 'Stop webcam' : 'Start webcam'"
+              :disabled="!wanted && !readiness.ready"
+              @click="wanted ? stop() : start()"
+            />
+          </div>
+
+          <div
+            v-if="
+              environment?.supported &&
+              (!environment.runtimeReady || !environment.obsInstalled || !camera.isConnected.value)
+            "
+            class="mt-4 flex flex-wrap items-center gap-3 border-t border-default pt-3"
+          >
+            <template v-if="!environment.runtimeReady">
+              <p v-if="environment.bundled" class="w-full text-xs leading-relaxed text-muted">
+                {{
+                  environment.runtimeError ??
+                  "The bundled video engine could not start. Repair or reinstall this development build, then check setup again."
+                }}
+              </p>
+              <template v-else>
+                <UButton
+                  v-if="environment.pythonFound"
+                  label="Prepare webcam"
+                  icon="i-lucide-download"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  :loading="busy"
+                  @click="setup"
+                />
+                <UButton
+                  v-else
+                  label="Install Python"
+                  trailing-icon="i-lucide-arrow-up-right"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  @click="openHelp('python')"
+                />
+                <span class="text-xs text-muted"
+                  >One-time setup for this development build; internet required.</span
+                >
+              </template>
+            </template>
+            <UButton
+              v-if="!environment.obsInstalled"
+              label="Install OBS Studio"
+              trailing-icon="i-lucide-arrow-up-right"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              @click="openHelp('obs')"
+            />
+            <UButton
+              v-if="!camera.isConnected.value"
+              label="Connect Luna"
+              icon="i-lucide-plug"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :loading="camera.isBusy.value"
+              :disabled="!camera.available.value"
+              @click="camera.connect"
+            />
+            <UButton
+              v-if="!environment.runtimeReady || !environment.obsInstalled"
+              label="Check setup again"
+              icon="i-lucide-refresh-cw"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :loading="checking"
+              :disabled="busy"
+              @click="check"
+            />
+          </div>
+          <UButton
+            v-if="!environment && error && !checking"
+            class="mt-3"
+            label="Check setup again"
+            icon="i-lucide-refresh-cw"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            @click="check"
+          />
+          <details class="mt-3 border-t border-default pt-3 text-xs text-muted">
+            <summary
+              class="cursor-pointer rounded-sm font-medium text-highlighted focus-visible:outline-2 focus-visible:outline-offset-4"
+            >
+              Before a long session · camera power &amp; internet
+            </summary>
+            <div class="mt-3 grid gap-3 leading-relaxed md:grid-cols-2">
+              <p>
+                Check
+                <span class="font-medium text-highlighted"
+                  >Screen Auto Sleep and Auto Power Off</span
+                >
+                in Luna’s Settings → General. If video pauses when the screen goes dark, wake the
+                camera and adjust those timers on Luna. Automatic camera keep-awake is not available
+                yet.
+              </p>
+              <p>
+                Calls and streams need internet alongside Luna’s Wi-Fi. Use Ethernet for internet,
+                or a second Wi-Fi adapter. Choose a separate microphone in your call app or OBS.
+              </p>
+            </div>
+          </details>
+        </section>
+
+        <UAlert
+          v-if="primaryError"
+          icon="i-lucide-triangle-alert"
+          color="warning"
+          variant="subtle"
+          :title="primaryError"
+        >
+          <template v-if="camera.isConnected.value && live.error.value" #actions>
+            <UButton
+              label="Retry preview"
+              icon="i-lucide-refresh-cw"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :disabled="preparing"
+              @click="live.retry({ elementary: true })"
+            />
+          </template>
+        </UAlert>
 
         <div class="studio-grid grid items-start gap-5">
           <section class="min-w-0 space-y-4" aria-label="Studio preview">
             <div
-              class="studio-viewfinder relative flex h-[clamp(260px,48vh,540px)] items-center justify-center overflow-hidden rounded-[24px] border border-white/10 bg-[#101017]"
+              class="studio-viewfinder relative flex h-[clamp(240px,40vh,480px)] items-center justify-center overflow-hidden rounded-[24px] border border-white/10 bg-[#101017]"
             >
               <div
                 v-if="camera.isConnected.value && live.active.value"
@@ -196,13 +353,13 @@ async function exportConnectionReport() {
               </div>
               <div
                 v-else
-                class="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center"
+                class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 py-10 text-center"
               >
-                <div class="studio-hero-model h-40 w-48">
+                <div class="studio-hero-model h-28 w-40">
                   <LunaModel :colorway :interactive="false" />
                 </div>
-                <div class="space-y-2">
-                  <h2 class="text-lg font-medium text-white">
+                <div class="space-y-1.5">
+                  <h2 class="text-base font-medium text-white">
                     {{
                       camera.isConnected.value
                         ? live.failed.value
@@ -210,16 +367,16 @@ async function exportConnectionReport() {
                           : preparing
                             ? "Preparing your camera"
                             : "Bringing your picture in"
-                        : "Meet your next webcam"
+                        : "Your frame starts here"
                     }}
                   </h2>
-                  <p class="max-w-sm text-sm text-white/50">
+                  <p class="max-w-sm text-xs leading-relaxed text-white/60">
                     {{
                       camera.isConnected.value
                         ? live.failed.value
-                          ? "The camera did not send video. Retry the preview, or reconnect Luna if it stays stuck."
-                          : "The preview starts as soon as the camera sends video."
-                        : "Join your Luna’s Wi-Fi, then connect. Your live picture will appear here."
+                          ? "Retry the preview, or reconnect Luna if video does not return."
+                          : "Waiting for the camera’s first picture."
+                        : "Join your Luna’s Wi-Fi, then connect to see your picture."
                     }}
                   </p>
                 </div>
@@ -227,12 +384,14 @@ async function exportConnectionReport() {
                   v-if="camera.isConnected.value && live.failed.value"
                   label="Retry preview"
                   icon="i-lucide-refresh-cw"
+                  size="sm"
                   @click="live.retry({ elementary: true })"
                 />
                 <UButton
                   v-if="!camera.isConnected.value"
                   label="Connect Luna"
                   icon="i-lucide-plug"
+                  size="sm"
                   :loading="camera.isBusy.value"
                   :disabled="!camera.available.value"
                   @click="camera.connect"
@@ -240,36 +399,34 @@ async function exportConnectionReport() {
               </div>
               <div
                 v-if="wanted && (!camera.isConnected.value || status.phase === 'reconnecting')"
-                class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[#101017]/95 text-white"
+                class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[#101017]/95 px-6 text-center text-white"
               >
                 <UIcon
                   name="i-lucide-radio"
                   class="size-8 text-violet-300 motion-safe:animate-pulse"
                 />
                 <span class="font-medium">Reconnecting your picture</span>
-                <span class="text-xs text-white/50"
+                <span class="text-xs text-white/60"
                   >Keep your destination open. We’ll recover automatically.</span
                 >
               </div>
               <div
-                class="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-5 pb-10 pt-5 text-[10px] tracking-[0.15em] text-white/65"
+                class="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-5 pb-8 pt-4 text-[10px] tracking-[0.12em] text-white/70"
               >
-                <span class="flex items-center gap-2"
-                  ><span
+                <span class="flex items-center gap-2">
+                  <span
                     class="size-1.5 rounded-full"
                     :class="publishing ? 'bg-emerald-400' : 'bg-white/40'"
-                  />{{ publishing ? "WEBCAM OUTPUT" : "CAMERA PREVIEW" }}</span
-                >
-                <span>{{ profile.width }} × {{ profile.height }}</span>
+                  />
+                  {{ publishing ? "WEBCAM ON" : "CAMERA PREVIEW" }}
+                </span>
+                <span>{{ profileId === "portrait" ? "9:16" : "16:9" }} FRAME</span>
               </div>
               <div
-                class="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/60 to-transparent px-5 pb-4 pt-10 text-[10px] tracking-[0.15em] text-white/65"
+                class="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/60 to-transparent px-5 pb-4 pt-8 text-[10px] tracking-[0.12em] text-white/70"
               >
                 <span>{{ camera.info.value?.deviceName ?? "LUNA ULTRA" }}</span>
-                <span
-                  >{{ mirror ? "MIRRORED · " : ""
-                  }}{{ profileId === "portrait" ? "9:16" : "16:9" }}</span
-                >
+                <span>{{ mirror ? "MIRROR ON" : "" }}</span>
               </div>
             </div>
 
@@ -279,7 +436,7 @@ async function exportConnectionReport() {
                 :key="choice.id"
                 type="button"
                 :disabled="wanted || busy"
-                class="studio-profile flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-60 sm:p-4"
+                class="studio-profile flex min-w-0 items-center gap-2 rounded-2xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-60 sm:p-4"
                 :class="
                   profileId === choice.id
                     ? 'border-violet-400/70 bg-violet-500/5'
@@ -290,73 +447,28 @@ async function exportConnectionReport() {
               >
                 <UIcon
                   :name="choice.icon"
-                  class="hidden size-5 shrink-0 text-violet-400 sm:block"
+                  class="hidden size-4 shrink-0 text-violet-400 sm:block"
                 />
-                <span class="min-w-0"
-                  ><span class="block text-sm font-medium text-highlighted">{{ choice.label }}</span
-                  ><span class="block text-[11px] text-muted">{{ choice.detail }}</span></span
-                >
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-highlighted">{{ choice.label }}</span>
+                  <span class="mt-1 block text-[11px] leading-relaxed text-muted">{{
+                    choice.detail
+                  }}</span>
+                </span>
               </button>
             </div>
             <p class="px-1 text-xs leading-relaxed text-muted">
               {{
-                profileId === "portrait"
-                  ? "Fits a vertical source without stretching. Source orientation depends on the camera’s mode."
-                  : "Keeps your source proportions, with black bars when needed. Camera mode determines the native picture."
-              }}
-              {{
                 profileId === "fullhd"
-                  ? "1080p output scales to fit the delivered source; source measurements show the actual camera detail."
-                  : ""
+                  ? "1080p is upscaled from Luna’s source. It fits a Full HD canvas without adding camera detail."
+                  : profileId === "portrait"
+                    ? "For vertical video, set portrait orientation on Luna. Your picture keeps its proportions."
+                    : "A 720p frame for calls and OBS. Your picture keeps its proportions, with black bars when needed."
               }}
+              <span v-if="wanted"> Stop webcam to change your frame or settings.</span>
             </p>
-            <section
-              class="space-y-3 rounded-2xl border border-default bg-default/70 p-4"
-              aria-label="Camera source settings"
-            >
-              <div
-                class="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-highlighted"
-              >
-                <label for="native-source-profile">Native camera source</label>
-                <select
-                  id="native-source-profile"
-                  v-model="live.sourceProfile.value"
-                  :disabled="wanted || busy || preparing || live.starting.value"
-                  class="max-w-full rounded-xl border border-default bg-default p-2 text-xs"
-                >
-                  <option v-for="choice in PREVIEW_PROFILES" :key="choice.id" :value="choice.id">
-                    {{ choice.label }}
-                  </option>
-                </select>
-              </div>
-              <p class="text-xs leading-relaxed text-muted">
-                These request a different feed from Luna. Experimental profiles may be ignored or
-                unavailable; use the source measurements below to check what arrives. Stop webcam
-                before changing. Keep camera mode and orientation fixed while comparing.
-                Connection-loss recovery returns to the tested baseline.
-              </p>
-              <p v-if="status.sourceWidth && wanted" class="text-xs text-muted" role="status">
-                {{
-                  previewVerdict(
-                    live.sourceProfile.value,
-                    status.sourceWidth,
-                    status.sourceHeight,
-                    status.sourceFps,
-                  )
-                }}
-              </p>
-              <UButton
-                v-if="live.sourceProfile.value !== 'baseline'"
-                label="Use tested baseline"
-                size="xs"
-                color="neutral"
-                variant="outline"
-                :disabled="wanted || live.starting.value"
-                @click="live.sourceProfile.value = 'baseline'"
-              />
-            </section>
             <p
-              v-if="framingHint"
+              v-if="framingHint && wanted"
               class="px-1 text-xs leading-relaxed text-amber-600 dark:text-amber-300"
               role="status"
             >
@@ -364,127 +476,126 @@ async function exportConnectionReport() {
             </p>
 
             <div
-              class="grid grid-cols-3 divide-x divide-default rounded-2xl border border-default bg-default/70 py-4 text-center"
+              class="grid grid-cols-3 divide-x divide-default rounded-2xl border border-default bg-default/70 py-3 text-center"
             >
-              <div>
-                <p class="text-[10px] uppercase tracking-widest text-muted">Source</p>
+              <div class="px-2">
+                <p class="text-[10px] uppercase tracking-widest text-muted">Camera source</p>
                 <p class="mt-1 font-mono text-xs text-highlighted">{{ sourceLabel }}</p>
               </div>
-              <div>
-                <p class="text-[10px] uppercase tracking-widest text-muted">Decoded</p>
+              <div class="px-2">
+                <p class="text-[10px] uppercase tracking-widest text-muted">Source rate</p>
                 <p class="mt-1 font-mono text-xs text-highlighted">
                   {{
-                    wanted && status.sourceFps ? `${status.sourceFps.toFixed(1)} fps` : "Measuring…"
+                    wanted
+                      ? status.sourceFps
+                        ? `${status.sourceFps.toFixed(1)} fps`
+                        : "Measuring…"
+                      : "Not measured"
                   }}
                 </p>
               </div>
-              <div>
-                <p class="text-[10px] uppercase tracking-widest text-muted">Output</p>
+              <div class="px-2">
+                <p class="text-[10px] uppercase tracking-widest text-muted">Output frame</p>
                 <p class="mt-1 font-mono text-xs text-highlighted">
+                  {{ profile.width }} × {{ profile.height }}
+                </p>
+                <p class="mt-1 text-[10px] text-muted">
                   {{
                     wanted
                       ? (status.outputFps ?? live.sourceRequest.value.fps)
                       : live.sourceRequest.value.fps
                   }}
-                  fps
+                  fps{{ profileId === "fullhd" ? " · upscaled" : "" }}
                 </p>
               </div>
             </div>
-          </section>
+            <p v-if="!wanted" class="px-1 text-[11px] text-muted">
+              Source size and frame rate are measured when webcam output starts.
+            </p>
 
-          <aside class="space-y-4" aria-label="Output controls">
-            <section class="rounded-[24px] border border-default bg-default/80 p-5 shadow-sm">
-              <div class="mb-5 flex items-center justify-between">
-                <h2 class="text-sm font-semibold text-highlighted">Webcam output</h2>
-                <UIcon name="i-lucide-video" class="size-5 text-violet-400" />
-              </div>
-              <div v-if="!ready" class="mb-5 space-y-3">
-                <p class="text-xs leading-relaxed text-muted">
-                  {{
-                    !environment?.supported
-                      ? "Use the Windows desktop app for webcam output."
-                      : "Finish these steps once, then start your webcam with one click."
-                  }}
-                </p>
-                <div class="flex items-center gap-2 text-xs">
-                  <UIcon
-                    :name="environment?.runtimeReady ? 'i-lucide-circle-check' : 'i-lucide-circle'"
-                    class="size-4 text-violet-400"
-                  />{{ environment?.runtimeReady ? "Video engine ready" : "Video engine" }}
+            <details class="rounded-2xl border border-default bg-default/70 p-4 text-xs">
+              <summary
+                class="cursor-pointer rounded-sm font-medium text-highlighted focus-visible:outline-2 focus-visible:outline-offset-4"
+              >
+                Advanced source settings{{
+                  live.sourceProfile.value !== "baseline" ? " · experimental profile selected" : ""
+                }}
+              </summary>
+              <div class="mt-4 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <label for="native-source-profile" class="font-medium text-highlighted"
+                    >Native camera source</label
+                  >
+                  <select
+                    id="native-source-profile"
+                    v-model="live.sourceProfile.value"
+                    :disabled="wanted || busy || preparing || live.starting.value"
+                    class="max-w-full rounded-lg border border-default bg-default p-2"
+                  >
+                    <option v-for="choice in PREVIEW_PROFILES" :key="choice.id" :value="choice.id">
+                      {{ choice.label }}
+                    </option>
+                  </select>
                 </div>
-                <UButton
-                  v-if="environment?.supported && !environment.runtimeReady"
-                  class="w-full"
-                  color="neutral"
-                  variant="outline"
-                  :label="
-                    environment.pythonFound ? 'Prepare webcam' : 'Python needed for this dev build'
-                  "
-                  :loading="busy"
-                  :disabled="!environment.pythonFound"
-                  @click="setup"
-                />
+                <p class="leading-relaxed text-muted">
+                  Keep the tested baseline for everyday use. Higher resolutions and frame rates are
+                  experimental requests; Luna may ignore them. Compare measured source video with
+                  camera mode and orientation fixed. Connection recovery restores the baseline.
+                </p>
                 <p
-                  v-if="environment?.supported && !environment.runtimeReady"
-                  class="text-[11px] text-muted"
+                  v-if="status.sourceWidth && wanted"
+                  class="leading-relaxed text-muted"
+                  role="status"
                 >
-                  Setup needs internet access. Installed Windows releases include the video engine.
-                </p>
-                <div class="flex items-center gap-2 text-xs">
-                  <UIcon
-                    :name="environment?.obsInstalled ? 'i-lucide-circle-check' : 'i-lucide-circle'"
-                    class="size-4 text-violet-400"
-                  />{{
-                    environment?.obsInstalled ? "OBS camera driver ready" : "OBS camera driver"
+                  {{
+                    previewVerdict(
+                      live.sourceProfile.value,
+                      status.sourceWidth,
+                      status.sourceHeight,
+                      status.sourceFps,
+                    )
                   }}
-                </div>
-                <button
-                  v-if="
-                    environment?.supported && !environment.runtimeReady && !environment.pythonFound
-                  "
-                  type="button"
-                  class="text-xs text-violet-500 underline underline-offset-4 dark:text-violet-300"
-                  @click="openHelp('python')"
-                >
-                  Install Python for this development build
-                </button>
-                <button
-                  v-if="environment?.supported && !environment.obsInstalled"
-                  type="button"
-                  class="inline-flex items-center gap-1 text-xs text-violet-500 underline underline-offset-4 dark:text-violet-300"
-                  @click="openHelp('obs')"
-                >
-                  Install OBS Studio <UIcon name="i-lucide-arrow-up-right" class="size-3" />
-                </button>
+                </p>
                 <UButton
-                  label="Check setup again"
+                  v-if="live.sourceProfile.value !== 'baseline'"
+                  label="Use tested baseline"
                   size="xs"
                   color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-refresh-cw"
-                  :loading="checking"
-                  @click="check"
+                  variant="outline"
+                  :disabled="wanted || live.starting.value"
+                  @click="live.sourceProfile.value = 'baseline'"
                 />
               </div>
-              <template v-else>
-                <p class="mb-4 text-xs leading-relaxed text-muted">
-                  Choose this camera in your call or streaming app:
-                </p>
-                <button
-                  type="button"
-                  class="mb-5 flex w-full items-center justify-between rounded-xl bg-elevated p-3 text-left text-xs focus-visible:outline-2"
-                  @click="copyDevice"
-                >
-                  <span class="font-medium">{{
-                    copied ? "Copied camera name" : "OBS Virtual Camera"
-                  }}</span
-                  ><UIcon
-                    :name="copied ? 'i-lucide-check' : 'i-lucide-copy'"
-                    class="size-3.5 text-muted"
-                  />
-                </button>
-              </template>
-              <div class="mb-4 border-t border-default pt-4">
+            </details>
+          </section>
+
+          <aside class="space-y-4" aria-label="Output settings and destination">
+            <section class="rounded-[24px] border border-default bg-default/80 p-5">
+              <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-highlighted">Your webcam</h2>
+                <UIcon name="i-lucide-video" class="size-5 text-violet-400" />
+              </div>
+              <p class="mb-3 text-xs leading-relaxed text-muted">
+                Once started, select this camera in your app:
+              </p>
+              <button
+                type="button"
+                class="mb-4 flex w-full items-center justify-between gap-2 rounded-xl bg-elevated p-3 text-left text-xs focus-visible:outline-2"
+                @click="copyDevice"
+              >
+                <span class="font-medium">{{
+                  copied ? "Copied camera name" : "OBS Virtual Camera"
+                }}</span>
+                <UIcon
+                  :name="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                  class="size-3.5 shrink-0 text-muted"
+                />
+              </button>
+              <div class="flex items-center justify-between gap-3 border-t border-default py-4">
+                <label for="mirror-output" class="text-xs text-highlighted">Mirror image</label>
+                <USwitch id="mirror-output" v-model="mirror" :disabled="wanted || busy" />
+              </div>
+              <div class="border-t border-default pt-4">
                 <div class="flex items-center justify-between gap-3">
                   <label for="match-camera" class="text-xs text-highlighted"
                     >Match camera mode</label
@@ -494,53 +605,37 @@ async function exportConnectionReport() {
                 <p class="mt-2 text-[11px] leading-relaxed text-muted">
                   {{
                     matchCamera
-                      ? `Start selects ${profile.cameraModeLabel}, then verifies it. Switching to Slow-mo resets its color and filter to Standard.`
-                      : "Keep my camera settings. Start uses the current mode, color and orientation."
+                      ? `Start selects the tested ${profile.cameraModeLabel} mode. Orientation stays as set on Luna.`
+                      : "Use your current camera mode, color and orientation."
                   }}
                 </p>
-                <p v-if="matchCamera" class="mt-2 text-[11px] leading-relaxed text-muted">
-                  Based on the tested Luna preview. Orientation is set on the camera; recording
-                  resolution does not set preview quality.
+                <details v-if="matchCamera" class="mt-3 text-[11px] text-muted">
+                  <summary
+                    class="cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4"
+                  >
+                    What changes on the camera?
+                  </summary>
+                  <p class="mt-2 leading-relaxed">
+                    Switching into Slow-mo resets its color and filter to Standard. An already
+                    matching mode keeps its settings. Recording never starts automatically.
+                  </p>
+                </details>
+                <p
+                  v-if="wanted && cameraMode"
+                  class="mt-3 text-[11px] text-violet-500 dark:text-violet-300"
+                >
+                  {{ cameraMode }} verified · webcam stays on as you navigate.
                 </p>
               </div>
-              <div
-                class="mb-5 flex items-center justify-between gap-3 border-t border-default pt-4"
-              >
-                <label for="mirror-output" class="text-xs text-muted">Mirror image</label
-                ><USwitch id="mirror-output" v-model="mirror" :disabled="wanted || busy" />
-              </div>
-              <UButton
-                class="w-full justify-center rounded-xl py-3"
-                size="lg"
-                :color="wanted ? 'neutral' : 'primary'"
-                :variant="wanted ? 'outline' : 'solid'"
-                :icon="wanted ? 'i-lucide-square' : 'i-lucide-video'"
-                :label="wanted ? 'Stop webcam' : 'Start webcam'"
-                :disabled="!wanted && (!ready || !camera.isConnected.value || busy)"
-                @click="wanted ? stop() : start()"
-              />
-              <p class="mt-3 text-center text-[11px] text-muted">
-                {{
-                  wanted
-                    ? preparing
-                      ? "Checking the camera. Stop cancels startup."
-                      : cameraMode
-                        ? `${cameraMode} verified · output stays on while you navigate.`
-                        : "Output stays on while you navigate."
-                    : matchCamera
-                      ? `Camera preparation: ${profile.cameraModeLabel}`
-                      : "Your camera settings stay as you set them."
-                }}
-              </p>
             </section>
 
             <section class="rounded-[24px] border border-violet-400/20 bg-violet-500/[0.035] p-5">
               <div class="mb-2 flex items-center gap-2">
                 <UIcon name="i-lucide-radio" class="size-4 text-violet-400" />
-                <h2 class="text-sm font-semibold text-highlighted">Take it live</h2>
+                <h2 class="text-sm font-semibold text-highlighted">Choose your destination</h2>
               </div>
               <p class="mb-4 text-xs leading-relaxed text-muted">
-                Your Luna feeds OBS. OBS handles your microphone, scene and broadcast destination.
+                Use Luna for calls, or bring its picture into OBS for a live show.
               </p>
               <div
                 class="mb-4 flex gap-1 rounded-lg bg-elevated p-1"
@@ -570,12 +665,11 @@ async function exportConnectionReport() {
               <ol class="space-y-3 text-xs leading-relaxed text-muted">
                 <template v-if="destination === 'calls'">
                   <li>
-                    <span class="text-highlighted">1. Start webcam above.</span> Leave the Luna
-                    connected.
+                    <span class="text-highlighted">1. Start webcam.</span> Keep Luna connected.
                   </li>
                   <li>
-                    <span class="text-highlighted">2. Select OBS Virtual Camera</span> in Discord,
-                    Teams or Zoom.
+                    <span class="text-highlighted">2. Select OBS Virtual Camera</span> in your call
+                    app, such as Discord, Teams or Zoom.
                   </li>
                   <li>
                     <span class="text-highlighted">3. Choose your microphone</span> separately in
@@ -584,7 +678,7 @@ async function exportConnectionReport() {
                 </template>
                 <template v-else>
                   <li>
-                    <span class="text-highlighted">1. Start webcam above.</span> Keep OBS’s own
+                    <span class="text-highlighted">1. Start webcam in Luna.</span> Keep OBS’s own
                     virtual-camera publisher stopped.
                   </li>
                   <li>
@@ -595,13 +689,15 @@ async function exportConnectionReport() {
                     <span class="text-highlighted"
                       >3.
                       {{
-                        destination === "whatnot" ? "Use Whatnot Show Tools" : "Set your OBS canvas"
+                        destination === "whatnot"
+                          ? "Use Whatnot Show Tools."
+                          : "Set your OBS canvas."
                       }}</span
                     >
                     {{
                       destination === "whatnot"
-                        ? "Connect OBS WebSocket and apply the show’s settings: WHIP, a per-show bearer token and a 1080 × 1920 canvas. Keep the token private."
-                        : "Configure your platform’s broadcast settings in OBS."
+                        ? "Connect OBS WebSocket and apply the show’s WHIP settings and 1080 × 1920 canvas. Keep the per-show token private."
+                        : "Match your frame and configure the destination’s broadcast settings in OBS."
                     }}
                   </li>
                   <li>
@@ -609,14 +705,14 @@ async function exportConnectionReport() {
                       >4.
                       {{
                         destination === "whatnot"
-                          ? "Follow the Show Tools launch steps"
-                          : "Start Streaming in OBS"
+                          ? "Launch from Show Tools."
+                          : "Start Streaming in OBS."
                       }}</span
                     >
                     {{
                       destination === "whatnot"
-                        ? "Restart OBS after applying the initial profile, then return to Show Tools to start your show. Settings and tokens are specific to each show."
-                        : "when your destination is configured."
+                        ? "After initial profile setup, restart OBS and reconnect Show Tools before starting the show."
+                        : "Your destination app manages the live broadcast."
                     }}
                   </li>
                 </template>
@@ -631,33 +727,21 @@ async function exportConnectionReport() {
                 variant="link"
                 @click="openHelp('whatnot')"
               />
-              <p class="mt-4 border-t border-violet-400/15 pt-3 text-[11px] text-muted">
-                Webcam output is local. Broadcast status is managed in your destination app.
+              <p
+                class="mt-4 border-t border-violet-400/15 pt-3 text-[11px] leading-relaxed text-muted"
+              >
+                Webcam output stays on this computer. Going live and microphone audio are handled by
+                your destination app.
               </p>
             </section>
           </aside>
         </div>
 
-        <UAlert
-          v-if="error || status.error || live.error.value || camera.error.value"
-          icon="i-lucide-triangle-alert"
-          color="warning"
-          variant="subtle"
-          :title="error ?? status.error ?? live.error.value ?? camera.error.value ?? ''"
-        />
-        <UButton
-          v-if="live.active.value && live.error.value && camera.isConnected.value"
-          label="Retry preview"
-          icon="i-lucide-refresh-cw"
-          color="neutral"
-          variant="outline"
-          :disabled="preparing"
-          @click="live.retry({ elementary: true })"
-        />
-
         <details class="rounded-2xl border border-default p-4 text-xs text-muted">
-          <summary class="cursor-pointer font-medium text-highlighted">
-            Connection & diagnostics
+          <summary
+            class="cursor-pointer rounded-sm font-medium text-highlighted focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
+            Connection &amp; diagnostics
           </summary>
           <div class="mt-4 grid gap-4 md:grid-cols-2">
             <div class="space-y-3">
@@ -684,8 +768,8 @@ async function exportConnectionReport() {
                 >
                   <option value="hevc">HEVC · tested Luna</option>
                   <option value="h264">H.264 · other firmware</option>
-                </select></label
-              >
+                </select>
+              </label>
               <UButton
                 label="Export camera report"
                 icon="i-lucide-file-down"
@@ -697,8 +781,8 @@ async function exportConnectionReport() {
                 @click="exportCameraReport"
               />
               <p class="text-[11px]">
-                Reads known camera options through this connection. No settings change; Wi-Fi
-                credentials and device identifiers are omitted.
+                Reads known camera options without changing settings. Wi-Fi credentials and device
+                identifiers are omitted.
               </p>
               <UButton
                 label="Export connection report"
@@ -710,16 +794,13 @@ async function exportConnectionReport() {
                 @click="exportConnectionReport"
               />
               <p class="text-[11px]">
-                Save this just after a dropout, before closing the app. It includes recovery reasons
-                and works while disconnected.
+                Save just after a dropout, before closing the app. Includes recovery reasons and
+                works while disconnected.
               </p>
               <p class="text-[11px]">Development build {{ appVersion }} · {{ buildCommit }}</p>
-              <p class="text-[11px]">
-                If video pauses when Luna's screen goes dark, wake the screen and check camera
-                Settings → General → Screen Auto Sleep and Auto Power Off. Use Never for auto power
-                off; disable screen sleep if offered, or select its longest duration for testing.
+              <p v-if="reportLocation" class="break-all" role="status">
+                Saved to {{ reportLocation }}
               </p>
-              <p v-if="reportLocation" role="status">Saved to {{ reportLocation }}</p>
             </div>
             <pre
               class="max-h-36 overflow-auto whitespace-pre-wrap rounded-xl bg-elevated p-3 font-mono text-[11px]"
@@ -742,12 +823,12 @@ async function exportConnectionReport() {
 .studio-viewfinder {
   box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.55);
 }
-@media (min-width: 900px) {
+@media (min-width: 1180px) {
   .studio-grid {
     grid-template-columns: minmax(0, 1fr) 280px;
   }
 }
-@media (min-width: 1280px) {
+@media (min-width: 1440px) {
   .studio-grid {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
@@ -759,7 +840,7 @@ async function exportConnectionReport() {
 }
 @media (max-height: 740px) {
   .studio-hero-model {
-    height: 6rem;
+    height: 4rem;
   }
 }
 </style>

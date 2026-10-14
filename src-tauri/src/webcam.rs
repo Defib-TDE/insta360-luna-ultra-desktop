@@ -34,6 +34,7 @@ pub struct WebcamEnvironment {
     pub runtime_ready: bool,
     pub obs_installed: bool,
     pub bundled: bool,
+    pub runtime_error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -122,12 +123,23 @@ fn runtime_python(dir: &Path) -> PathBuf {
     dir.join("venv").join("Scripts").join("python.exe")
 }
 
-fn bundled_helper(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
+fn bundled_helper_path(resource_dir: &Path, bundle_required: bool) -> Option<PathBuf> {
+    let helper = resource_dir.join("resources/webcam/webcam-bridge/webcam-bridge.exe");
+    // A missing executable inside an existing bundle needs repair, not a Python runtime
+    // that webcam_start would never select. Windows release builds require the bundle
+    // created by tools/build-windows.ps1 even when its entire resource folder is missing.
+    (bundle_required || helper.parent().is_some_and(Path::is_dir)).then_some(helper)
+}
+
+fn bundled_helper(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    let resource_dir = app
+        .path()
         .resource_dir()
-        .ok()
-        .map(|dir| dir.join("resources/webcam/webcam-bridge/webcam-bridge.exe"))
-        .filter(|path| path.is_file())
+        .map_err(|error| format!("Cannot locate the application's video engine resources: {error}"))?;
+    Ok(bundled_helper_path(
+        &resource_dir,
+        cfg!(all(target_os = "windows", not(debug_assertions))),
+    ))
 }
 
 fn stage_bridge(dir: &Path) -> Result<(), String> {
@@ -147,19 +159,22 @@ fn stage_bridge(dir: &Path) -> Result<(), String> {
 async fn checked(mut cmd: Command, timeout: Duration) -> Result<String, String> {
     let output = tokio::time::timeout(timeout, cmd.output())
         .await
-        .map_err(|_| {
-            "The webcam runtime operation timed out. Try again with internet access.".to_string()
-        })?
+        .map_err(|_| "The webcam runtime operation timed out.".to_string())?
         .map_err(|error| error.to_string())?;
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr)
+        let detail: String = String::from_utf8_lossy(&output.stderr)
             .chars()
             .rev()
             .take(2000)
             .collect::<String>()
             .chars()
             .rev()
-            .collect());
+            .collect();
+        return Err(if detail.trim().is_empty() {
+            format!("The webcam runtime process exited with {}.", output.status)
+        } else {
+            detail
+        });
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().into())
 }
@@ -187,6 +202,24 @@ async fn runtime_ready(dir: &Path) -> bool {
     checked(cmd, Duration::from_secs(10)).await.is_ok()
 }
 
+async fn check_bundled_runtime(cmd: Command, timeout: Duration) -> Result<(), String> {
+    let result = async {
+        let output = checked(cmd, timeout).await?;
+        let ready = serde_json::from_str::<serde_json::Value>(&output)
+            .ok()
+            .and_then(|response| response["runtimeReady"].as_bool())
+            == Some(true);
+        if !ready {
+            return Err("The video engine did not return a valid readiness response.".to_string());
+        }
+        Ok(())
+    }
+    .await;
+    result.map_err(|error| format!(
+        "The bundled video engine could not start. Repair or reinstall this development build, then check setup again. {error}"
+    ))
+}
+
 #[tauri::command]
 pub async fn webcam_environment(app: AppHandle) -> Result<WebcamEnvironment, String> {
     if !cfg!(target_os = "windows") {
@@ -196,6 +229,7 @@ pub async fn webcam_environment(app: AppHandle) -> Result<WebcamEnvironment, Str
             runtime_ready: false,
             obs_installed: false,
             bundled: false,
+            runtime_error: None,
         });
     }
     let mut driver = command("reg.exe");
@@ -204,13 +238,25 @@ pub async fn webcam_environment(app: AppHandle) -> Result<WebcamEnvironment, Str
         "HKCR\\CLSID\\{A3FCE0F5-3493-419F-958A-ABA1250EC20B}",
         "/reg:64",
     ]);
-    let bundled = bundled_helper(&app).is_some();
+    let helper = bundled_helper(&app)?;
+    let bundled = helper.is_some();
+    let (runtime_ready, runtime_error) = if let Some(helper) = helper {
+        let mut cmd = command(helper);
+        cmd.arg("--check-runtime");
+        match check_bundled_runtime(cmd, Duration::from_secs(10)).await {
+            Ok(()) => (true, None),
+            Err(error) => (false, Some(error)),
+        }
+    } else {
+        (runtime_ready(&runtime_dir(&app)?).await, None)
+    };
     Ok(WebcamEnvironment {
         supported: true,
         python_found: bundled || python_launcher().await.is_some(),
-        runtime_ready: bundled || runtime_ready(&runtime_dir(&app)?).await,
+        runtime_ready,
         obs_installed: checked(driver, Duration::from_secs(5)).await.is_ok(),
         bundled,
+        runtime_error,
     })
 }
 
@@ -218,6 +264,9 @@ pub async fn webcam_environment(app: AppHandle) -> Result<WebcamEnvironment, Str
 pub async fn webcam_setup(app: AppHandle, state: State<'_, WebcamState>) -> Result<(), String> {
     if !cfg!(target_os = "windows") {
         return Err("Webcam output currently requires Windows.".into());
+    }
+    if bundled_helper(&app)?.is_some() {
+        return Err("This build includes its video engine. If it cannot start, repair or reinstall this development build, then check setup again.".into());
     }
     let _operation = state.operation.lock().await;
     if state
@@ -320,9 +369,6 @@ fn bridge_event(status: &Arc<StdMutex<WebcamStatus>>, line: &str) {
             status.source_width = event["width"].as_u64();
             status.source_height = event["height"].as_u64();
             status.source_fps = event["observedDecodeFps"].as_f64();
-            if status.device.is_some() {
-                status.phase = "publishing".into();
-            }
         }
         _ => {}
     }
@@ -399,7 +445,7 @@ pub async fn webcam_start(
     let _operation = state.operation.lock().await;
     stop_worker(&state).await;
     let dir = runtime_dir(&app)?;
-    let mut cmd = if let Some(helper) = bundled_helper(&app) {
+    let mut cmd = if let Some(helper) = bundled_helper(&app)? {
         command(helper)
     } else {
         if !runtime_ready(&dir).await {
@@ -464,6 +510,117 @@ pub async fn shutdown(state: &WebcamState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn missing_bundled_executable_keeps_repair_path() {
+        let resource_dir = std::env::temp_dir().join(format!(
+            "luna-bundle-resources-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let helper = resource_dir.join("resources/webcam/webcam-bridge/webcam-bridge.exe");
+        // An unbundled debug build may prepare a private Python runtime.
+        assert!(bundled_helper_path(&resource_dir, false).is_none());
+        // Windows release builds require their bundled engine, even if every resource is missing.
+        assert_eq!(
+            bundled_helper_path(&resource_dir, true),
+            Some(helper.clone())
+        );
+        std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+        let damaged_bundle = bundled_helper_path(&resource_dir, false);
+        let _ = std::fs::remove_dir_all(&resource_dir);
+        assert_eq!(damaged_bundle, Some(helper.clone()));
+        let error = check_bundled_runtime(command(helper), Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        assert!(error.contains("Repair or reinstall"));
+    }
+
+    fn runtime_probe_command(unix_script: &str, windows_script: &str) -> Command {
+        if cfg!(target_os = "windows") {
+            let mut cmd = command("powershell.exe");
+            cmd.args(["-NoProfile", "-NonInteractive", "-Command", windows_script]);
+            cmd
+        } else {
+            let mut cmd = command("sh");
+            cmd.args(["-c", unix_script]);
+            cmd
+        }
+    }
+
+    #[tokio::test]
+    async fn bundled_runtime_requires_a_successful_readiness_response() {
+        let cmd = runtime_probe_command(
+            r#"printf '%s\n' '{"runtimeReady":true,"av":"16.1.0"}'"#,
+            r#"[Console]::Out.WriteLine('{"runtimeReady":true,"av":"16.1.0"}')"#,
+        );
+        assert!(check_bundled_runtime(cmd, Duration::from_secs(10))
+            .await
+            .is_ok());
+
+        let cmd = runtime_probe_command(
+            r#"printf '%s\n' '{"runtimeReady":false}'"#,
+            r#"[Console]::Out.WriteLine('{"runtimeReady":false}')"#,
+        );
+        let error = check_bundled_runtime(cmd, Duration::from_secs(10))
+            .await
+            .unwrap_err();
+        assert!(error.contains("Repair or reinstall"));
+        assert!(error.contains("readiness response"));
+    }
+
+    #[tokio::test]
+    async fn bundled_runtime_preserves_launch_failure_diagnostics() {
+        let cmd = runtime_probe_command(
+            "printf 'Missing video library' >&2; exit 7",
+            "[Console]::Error.WriteLine('Missing video library'); exit 7",
+        );
+        let error = check_bundled_runtime(cmd, Duration::from_secs(10))
+            .await
+            .unwrap_err();
+        assert!(error.contains("Missing video library"));
+        assert!(error.contains("Repair or reinstall"));
+
+        let cmd = runtime_probe_command("exit 9", "exit 9");
+        let error = check_bundled_runtime(cmd, Duration::from_secs(10))
+            .await
+            .unwrap_err();
+        assert!(error.contains('9'));
+    }
+
+    #[tokio::test]
+    async fn bundled_runtime_timeout_stops_the_probe_process() {
+        let marker = std::env::temp_dir().join(format!(
+            "luna-runtime-probe-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut cmd = runtime_probe_command(
+            "sleep 0.75; printf alive > \"$LUNA_RUNTIME_TEST_MARKER\"",
+            "[System.Threading.Thread]::Sleep(750); [System.IO.File]::WriteAllText($env:LUNA_RUNTIME_TEST_MARKER, 'alive')",
+        );
+        cmd.env("LUNA_RUNTIME_TEST_MARKER", &marker);
+        let error = tokio::time::timeout(
+            Duration::from_secs(2),
+            check_bundled_runtime(cmd, Duration::from_millis(150)),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert!(error.contains("timed out"));
+        assert!(error.contains("Repair or reinstall"));
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let survived = marker.exists();
+        let _ = std::fs::remove_file(marker);
+        assert!(!survived, "Timed-out runtime probe kept running");
+    }
+
     #[tokio::test]
     async fn stop_and_exit_reap_the_supervised_process() {
         let state = WebcamState::default();
@@ -524,6 +681,8 @@ mod tests {
             &status,
             r#"{"event":"source","width":1280,"height":960,"observedDecodeFps":23.7}"#,
         );
+        assert_eq!(status.lock().unwrap().phase, "reconnecting");
+        bridge_event(&status, r#"{"event":"resumed"}"#);
         let status = status.lock().unwrap();
         assert_eq!(status.phase, "publishing");
         assert_eq!(status.source_fps, Some(23.7));
@@ -541,5 +700,26 @@ mod tests {
         let status = status.lock().unwrap();
         assert_eq!(status.phase, "error");
         assert!(status.error.as_ref().unwrap().contains("startup deadline"));
+    }
+
+    #[test]
+    fn decoded_source_metadata_does_not_clear_output_failure() {
+        let status = Arc::new(StdMutex::new(WebcamStatus::default()));
+        bridge_event(
+            &status,
+            r#"{"event":"publishing","device":"OBS Virtual Camera","fps":30}"#,
+        );
+        bridge_event(
+            &status,
+            r#"{"event":"error","message":"Frame conversion failed."}"#,
+        );
+        bridge_event(
+            &status,
+            r#"{"event":"source","width":1280,"height":960,"observedDecodeFps":23.7}"#,
+        );
+        let status = status.lock().unwrap();
+        assert_eq!(status.phase, "error");
+        assert_eq!(status.source_width, Some(1280));
+        assert_eq!(status.error.as_deref(), Some("Frame conversion failed."));
     }
 }
