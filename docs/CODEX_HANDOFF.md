@@ -26,9 +26,10 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   values and test duration remain unspecified. Automatic keep-awake is not
   verified. Official Bluetooth wake is documented for iOS, not a Windows
   keep-awake lease. No speculative power commands are added.
-  The user also reports the official Insta360 phone app's preview stops with
-  the original timers. This supports camera power behavior rather than a
-  fork-only fault, but does not identify a remotely writable power option.
+  Correction: the user clarified that the official Insta360 phone app has no
+  Luna live preview in their setup. Our question assumed otherwise; no valid
+  official-app preview comparison occurred. Do not use the earlier answer to
+  rule out an interaction with our preview session or establish a firmware limit.
 - Studio now puts readiness and Start/Stop first, shows nearby errors, collapses
   experimental source settings and distinguishes measured source from output.
   Full HD is explicitly upscaled. Connect now introduces the webcam workflow.

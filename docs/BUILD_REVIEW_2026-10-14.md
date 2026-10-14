@@ -33,10 +33,11 @@ The user confirmed on October 14 that changing the camera's sleep/power settings
 stopped the reported video dropouts. Original settings were Screen Auto Sleep
 90 seconds and Auto Power Off 3 minutes; replacement values and elapsed test
 duration were not supplied. This is not proof that every dropout cause is fixed.
-Asked whether official Insta360 phone-app preview lasts at least five minutes
-with those original timers, the user answered that it also stops. This supports
-camera power behavior rather than a fault unique to the fork; it does not prove
-that firmware has no remote power-setting or wake capability.
+The user clarified that the official Insta360 phone app does not offer Luna
+live preview in their setup. The earlier question assumed that feature existed;
+its answer is not evidence of an official-app comparison. The previous claim
+that official preview also stops is withdrawn. We have not isolated the exact
+power mechanism or ruled out an interaction with this app's preview session.
 
 Automatic session keep-awake is a product goal, but no supported Luna command
 has been verified. Existing three-second authorization keepalives did not prevent
@@ -53,7 +54,6 @@ is not proof of a working setting; do not send guessed setters or more pings.
 - Extracted `PHONE_COMMAND_REQUEST_WAKEUP` / `RELEASE_WAKEUP` names are a lead;
   Luna numeric codes, payload and lifetime remain unknown.
 
-The official-app comparison did not reveal a working keep-awake reference.
 Next investigate whether documented power options can be read remotely and
 mapped to one manually changed setting at a time. Do not assume the schema's
 `standby_duration` maps to either Luna timer. A future implementation must verify

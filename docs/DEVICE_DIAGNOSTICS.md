@@ -124,10 +124,12 @@ setting for 10–15 minutes each. Record original settings so they can be restor
 Do not infer a remote wake setter or the meaning of raw `standby_duration` from
 the shared schema; this unit's report did not acknowledge that option.
 
-On October 14 the user reported that changing the timers stopped the dropouts,
-and that official Insta360 phone-app preview also stops with the original
-timers. No working app keep-awake mechanism has been demonstrated. Replacement
-timer values and sustained-run duration remain unrecorded.
+On October 14 the user reported that changing the timers stopped the dropouts
+in our app. They then clarified that the official Insta360 phone app has no
+Luna live preview in their setup. The earlier question assumed that feature;
+there is no valid official-app preview comparison. No working remote keep-awake
+mechanism has been demonstrated. Replacement timer values and sustained-run
+duration remain unrecorded.
 
 For the next power-setting investigation, the existing notification listener
 can observe manual changes without sending setting commands:
