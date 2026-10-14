@@ -61,8 +61,14 @@ Command:
 cargo audit --file src-tauri/Cargo.lock
 ```
 
-`h2` was updated to 0.4.16 and `rustls` to 0.23.45 to clear two actionable
-advisories. The audit reports zero vulnerabilities and exits successfully.
+`h2` 0.4.16 and `rustls` 0.23.45 cleared the initial advisories. The
+October 14 audit found five advisories in locked `quinn-proto` 0.11.16:
+RUSTSEC-2026-0338 through RUSTSEC-2026-0342. It is updated to the compatible
+patched 0.11.18 release; no audit ignores or severity thresholds are changed.
+The full native test suite passes after the lockfile update. Fresh local
+`cargo audit` reports zero vulnerabilities, exits successfully and retains the
+eight warnings below. Hosted Windows verification is recorded in
+`CODEX_HANDOFF.md`.
 
 RustSec still reports eight allowed warnings inherited through Tauri's Linux
 GTK/WebKit and crypto dependency graph: six unmaintained crates, one `glib`

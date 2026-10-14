@@ -24,7 +24,7 @@ fork's newer connection recovery. Upstream push remains disabled locally.
 | Studio | Start/Stop and errors were low on the page; source experiments dominated normal setup. | Visible readiness/action card, nearby errors, compact setup, advanced source controls, correct stopped-state measurements, explicit upscaling. |
 | Connect/model | Unmount during the 59 MB model load caused a null-renderer exception and leaked late resources. Reduced-motion still scheduled frames. | Dispose late results, skip fallback loads after unmount, idle non-animated scenes until a redraw is needed. |
 | Offline UI | Automatic font providers attempted remote requests; icons referenced only in TypeScript were missed by template scanning. | Bundle Geist fonts and dynamic Studio icons. No internet is needed to resolve them. |
-| Dependencies | Fresh production audit: 10 findings (1 critical, 5 high, 4 moderate). | Compatible security updates; 5 remain (2 high, 3 moderate), documented without suppressions. |
+| Dependencies | Fresh JavaScript production audit: 10 findings (1 critical, 5 high, 4 moderate). Native audit also found five quinn-proto advisories. | Compatible JavaScript security updates leave 5 findings (2 high, 3 moderate); quinn-proto is patched to 0.11.18. No suppressions. |
 | Documentation | README/roadmap still described navigation-bound external webcam and absent portrait output. | Reconcile docs with integrated Studio and separate software verification from hardware acceptance. |
 
 ## Camera sleep: evidence and next investigation

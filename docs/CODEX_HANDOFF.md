@@ -57,6 +57,11 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   no actionable issues. Hosted
   Windows build/installer checks are the next verification step; do not confuse
   these local simulations with a new hardware acceptance pass.
+- Hosted frontend checks exposed missing NumPy/PyAV in its Python test job;
+  added an isolated runtime install rather than skipping pixel tests. The job
+  then passed. Hosted native audit found five advisories in quinn-proto 0.11.16;
+  patching to 0.11.18 passes all 43 local native tests and a fresh cargo audit
+  with zero vulnerabilities and eight existing allowed warnings.
 - Read [BUILD_REVIEW_2026-10-14.md](BUILD_REVIEW_2026-10-14.md) for findings,
   synthetic processing measurements, source references and remaining gates.
 
