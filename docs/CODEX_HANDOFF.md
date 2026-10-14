@@ -50,7 +50,11 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
 - Local verification: **383 unit + 71 Nuxt + 43 Rust + 16 Python tests passed**;
   typecheck, deny-warning lint, frozen install, critical audit, app generation
   and docs generation passed (0 link errors, 105 existing trailing-slash
-  warnings). Independent source review found no actionable issues. Hosted
+  warnings). Chromium UI simulations verified the primary action and no horizontal
+  overflow at 960×640, connect gating, upscaled labels, start/publish/stop, profile
+  locking and broken-bundle repair guidance, with no page errors. They use mock
+  clients and the fallback model, not a camera. Independent source review found
+  no actionable issues. Hosted
   Windows build/installer checks are the next verification step; do not confuse
   these local simulations with a new hardware acceptance pass.
 - Read [BUILD_REVIEW_2026-10-14.md](BUILD_REVIEW_2026-10-14.md) for findings,

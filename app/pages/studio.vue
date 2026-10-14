@@ -221,13 +221,7 @@ async function exportConnectionReport() {
             class="mt-4 flex flex-wrap items-center gap-3 border-t border-default pt-3"
           >
             <template v-if="!environment.runtimeReady">
-              <p v-if="environment.bundled" class="w-full text-xs leading-relaxed text-muted">
-                {{
-                  environment.runtimeError ??
-                  "The bundled video engine could not start. Repair or reinstall this development build, then check setup again."
-                }}
-              </p>
-              <template v-else>
+              <template v-if="!environment.bundled">
                 <UButton
                   v-if="environment.pythonFound"
                   label="Prepare webcam"
