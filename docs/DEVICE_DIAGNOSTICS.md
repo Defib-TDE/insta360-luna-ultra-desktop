@@ -124,6 +124,33 @@ setting for 10–15 minutes each. Record original settings so they can be restor
 Do not infer a remote wake setter or the meaning of raw `standby_duration` from
 the shared schema; this unit's report did not acknowledge that option.
 
+On October 14 the user reported that changing the timers stopped the dropouts,
+and that official Insta360 phone-app preview also stops with the original
+timers. No working app keep-awake mechanism has been demonstrated. Replacement
+timer values and sustained-run duration remain unrecorded.
+
+For the next power-setting investigation, the existing notification listener
+can observe manual changes without sending setting commands:
+
+1. Close the Dev app, any standalone bridge and the phone's camera session.
+   Keep the PC joined to Luna Wi-Fi. Note the current working timer values.
+2. From the repository directory, run:
+
+   ```powershell
+   node .\scripts\probe-colorspace.mjs listen
+   ```
+
+3. Change just one timer on the camera from A to B and back to A, noting the
+   values alongside the printed notifications. Hold the other timer fixed at
+   its working value. Repeat with the other timer if the camera stays awake.
+4. Stop the listener with Ctrl+C and restore the working settings before
+   reopening Studio.
+
+The listener uses its own authorization/heartbeat connection; do not run it
+alongside another camera client. It prints raw notifications, unlike the
+redacted in-app reports. Repeatable fields would be a protocol lead, not proof
+of a remote setter or successful keep-awake. No notifications is inconclusive.
+
 Native recovery now monitors a previously running source for 12 seconds of
 silence. With responsive control it tries at most two Stop/Start preview cycles,
 at least 30 seconds apart, preserving the relay URL, source profile and camera

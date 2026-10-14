@@ -26,6 +26,9 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   values and test duration remain unspecified. Automatic keep-awake is not
   verified. Official Bluetooth wake is documented for iOS, not a Windows
   keep-awake lease. No speculative power commands are added.
+  The user also reports the official Insta360 phone app's preview stops with
+  the original timers. This supports camera power behavior rather than a
+  fork-only fault, but does not identify a remotely writable power option.
 - Studio now puts readiness and Start/Stop first, shows nearby errors, collapses
   experimental source settings and distinguishes measured source from output.
   Full HD is explicitly upscaled. Connect now introduces the webcam workflow.
@@ -53,15 +56,21 @@ See [`STUDIO_PLAN.md`](STUDIO_PLAN.md) and [`STUDIO_SETUP.md`](STUDIO_SETUP.md).
   warnings). Chromium UI simulations verified the primary action and no horizontal
   overflow at 960×640, connect gating, upscaled labels, start/publish/stop, profile
   locking and broken-bundle repair guidance, with no page errors. They use mock
-  clients and the fallback model, not a camera. Independent source review found
-  no actionable issues. Hosted
-  Windows build/installer checks are the next verification step; do not confuse
-  these local simulations with a new hardware acceptance pass.
+  clients and the fallback model, not a camera. A separate dark-theme Chromium
+  check rendered the actual model with no page errors. Independent source
+  review found no actionable issues; these are not hardware acceptance tests.
 - Hosted frontend checks exposed missing NumPy/PyAV in its Python test job;
   added an isolated runtime install rather than skipping pixel tests. The job
   then passed. Hosted native audit found five advisories in quinn-proto 0.11.16;
   patching to 0.11.18 passes all 43 local native tests and a fresh cargo audit
   with zero vulnerabilities and eight existing allowed warnings.
+- Final functional revision **`2c97ccd`** passed
+  [CI 38513598531](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/38513598531):
+  frontend tests, typecheck, lint, generation and critical dependency audit;
+  Python pixel/conversion tests; native Linux/Windows tests and Rust audit;
+  Windows device-inventory smoke, MSI/NSIS creation and embedded-engine launch.
+  No installers were published. Installation on a clean Windows PC and the
+  real-camera acceptance pass remain outstanding.
 - Read [BUILD_REVIEW_2026-10-14.md](BUILD_REVIEW_2026-10-14.md) for findings,
   synthetic processing measurements, source references and remaining gates.
 

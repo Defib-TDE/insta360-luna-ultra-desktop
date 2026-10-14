@@ -33,6 +33,10 @@ The user confirmed on October 14 that changing the camera's sleep/power settings
 stopped the reported video dropouts. Original settings were Screen Auto Sleep
 90 seconds and Auto Power Off 3 minutes; replacement values and elapsed test
 duration were not supplied. This is not proof that every dropout cause is fixed.
+Asked whether official Insta360 phone-app preview lasts at least five minutes
+with those original timers, the user answered that it also stops. This supports
+camera power behavior rather than a fault unique to the fork; it does not prove
+that firmware has no remote power-setting or wake capability.
 
 Automatic session keep-awake is a product goal, but no supported Luna command
 has been verified. Existing three-second authorization keepalives did not prevent
@@ -49,16 +53,25 @@ is not proof of a working setting; do not send guessed setters or more pings.
 - Extracted `PHONE_COMMAND_REQUEST_WAKEUP` / `RELEASE_WAKEUP` names are a lead;
   Luna numeric codes, payload and lifetime remain unknown.
 
-Next hardware investigation: restore original timers temporarily and compare
-an official-app preview. If it stays awake, inspect its preview start/end control
-traffic to identify the wake request and release. A future implementation must
-verify readback/behavior, scope the override to an active Studio session, and
+The official-app comparison did not reveal a working keep-awake reference.
+Next investigate whether documented power options can be read remotely and
+mapped to one manually changed setting at a time. Do not assume the schema's
+`standby_duration` maps to either Luna timer. A future implementation must verify
+readback and behavior, scope the override to an active Studio session, and
 restore the original setting. No experimental power writes are added here.
+The [notification-listener procedure](DEVICE_DIAGNOSTICS.md#screen-sleep-and-video-only-pauses)
+provides a bounded first experiment using the existing script.
 
 ## Verification and remaining acceptance
 
 Baseline: 338 unit tests and 62 Nuxt tests passed before implementation.
-Final verification is recorded in `CODEX_HANDOFF.md` after checks complete.
+Final local verification: 383 unit, 71 Nuxt, 43 native and 16 Python tests passed
+(513 total), plus typecheck, lint, app/docs generation and dependency gates.
+Functional revision `2c97ccd` passed
+[hosted CI 38513598531](https://github.com/Defib-TDE/insta360-luna-ultra-desktop/actions/runs/38513598531),
+including native Windows tests, MSI/NSIS creation and the embedded engine's
+launch check. No installers were published; clean-machine installation and
+camera acceptance remain separate. Details are recorded in `CODEX_HANDOFF.md`.
 
 A paired local synthetic conversion benchmark used a generated 1280×720 YUV420p
 frame scaled to 1920×1080 RGB: six alternating 75-frame batches produced median
@@ -77,3 +90,10 @@ Start/Stop, run a 60-minute webcam session with the working power settings, test
 navigation/reconnect, then verify clean Windows installation and Teams/Zoom/
 Whatnot. Keep the working upstream application intact. Public binary release
 still depends on licensing, notices and installer acceptance.
+
+Two performance/recovery leads remain for a separate measured follow-up:
+continuous undecodable bytes could keep the decoder's I/O alive without yielding
+a frame, so recovery needs a decoded-progress deadline rather than only a read
+timeout. This is a code-review lead, not an explanation established for the
+user's sleep-related dropouts. Encoded-payload copies in the native relay also
+merit profiling before changing buffer ownership.
